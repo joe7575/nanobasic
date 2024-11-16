@@ -1,0 +1,3 @@
+10 PRINT "Hello world"
+20 GOTO 10
+30 END
