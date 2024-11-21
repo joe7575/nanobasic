@@ -1,6 +1,7 @@
 #
 # Tiny BASIC interpreter and compiler
 # pip install peglet
+# Debug: for item in self.programm[22:]: print(hex(item), end=" ")
 #
 
 import os
@@ -10,50 +11,76 @@ import sys
 import argparse
 import peglet
 
+k_TAG           = 0xBC
+k_VERSION       = 0x01
+
+k_END           = 0
+k_PRINTS        = 1
+k_PRINTV        = 2
+k_PRINTNL       = 3
+k_NUMBER        = 4
+k_BYTENUM       = 5
+k_VAR           = 6
+k_LET           = 7
+k_ADD           = 8
+k_SUB           = 9
+k_MUL           = 10
+k_DIV           = 11
+k_EQUAL         = 12
+k_NEQUAL        = 13
+k_LESS          = 14
+k_LESSEQUAL     = 15
+k_GREATER       = 16
+k_GREATEREQUAL  = 17
+k_GOTO          = 18
+k_GOSUB         = 19
+k_RETURN        = 20
+k_IF            = 21
 
 class Parser(object):
 
     grammar = r"""
     lines       = _ line _ lines
                 | _ line
-    line        = num _ stmt                        hug
+    line        = label (\:) _ stmt                 hug
                 | stmt                              hug
+                | label (\:)                        hug
     stmt        = print_stmt
                 | let_stmt
-                | input_stmt
                 | if_stmt
                 | goto_stmt
-                | clear_stmt
-                | list_stmt
-                | run_stmt
+                | gosub_stmt
                 | end_stmt
                 | rem_stmt
 
     print_stmt  = (PRINT\b) _ expr_list
     let_stmt    = (LET\b) _ var _ (?:=) _ expr
                 | (LET\b) _ var _ (?:=) _ str
-    input_stmt  = (INPUT\b) _ var_list
-    if_stmt     = (IF\b) _ expr _ (THEN\b) _ stmt
-    goto_stmt   = (GOTO\b) _ expr
-    clear_stmt  = (CLEAR\b)
-    list_stmt   = (LIST\b)
-    run_stmt    = (RUN\b)
+    if_stmt     = (IF\b) _ expr _ relop _ expr _ (THEN\b) _ stmt
+    goto_stmt   = (GOTO\b) _ label
+    gosub_stmt  = (GOSUB\b) _ label
     end_stmt    = (END\b)
     rem_stmt    = (REM\b) _ str
 
-    expr_list   = expr _ , _ expr_list 
+    expr_list   = expr _ (,) _ expr_list 
                 | expr 
-                | str _ , _ expr_list
+                | str _ (,) _ expr_list
                 | str
-    expr        = term _ binop _ expr               join
-                | term _ relop _ expr               join
+
+    expr        = term _ (\+|\-) _ expr
                 | term
-    term        = var
+
+    term        = factor _ (\*|\/) _ term
+                | factor
+
+    factor      = var
                 | num
                 | l_paren _ expr _ r_paren          join
+
     var_list    = var _ , _ var_list
                 | var
-    var         = ([A-Z])
+    var         = ([A-Za-z_][A-Za-z0-9_]*)
+    label       = ([A-Za-z_][A-Za-z0-9_]*)
 
     str         = " chars " _                       join quote
                 | ' sqchars ' _                     join
@@ -69,7 +96,7 @@ class Parser(object):
                 | \\([bfnrt])                       escape
     num         = (\-) num
                 | (\d+)
-    relop       = (<>|><|<=|<|>=|>|=)               repop
+    relop       = (<>|<=|<|>=|>|=)
     binop       = (\+|\-|\*|\/)
     l_paren     = (\()
     r_paren     = (\)) 
@@ -79,7 +106,6 @@ class Parser(object):
     def __init__(self):
         kwargs = {"hug"     : peglet.hug,
                   "join"    : peglet.join,
-                  "repop"   : self.repop,
                   "quote"   : self.quote,
                   "escape"  : re.escape}
         self.parser = peglet.Parser(self.grammar, **kwargs)
@@ -87,151 +113,42 @@ class Parser(object):
     def __call__(self, program):
         return self.parser(program)
 
-    def repop(self, token):
-        if token == "<>" or token == "><":
-            return "!="
-        return token
-
     def quote(self, token):
         return '"%s"' % token
-
-
-class Interpreter(object):
-    
-    def __init__(self):
-        self.curr = 0
-        self.memory = {}
-        self.symbols = {}
-        self.parse_tree = None
-        self.parser = Parser()
-    
-    def __call__(self, program):
-        self.parse_tree = self.parser(program)
-        for line in self.parse_tree:
-            if len(line) > 1:
-                head, tail = int(line[0]), line[1:]
-                self.memory[head] = tail
-        for line in self.parse_tree:
-            if len(line) == 1:
-                self.stmt(line)
-        self.curr = 0
-
-    def stmt(self, stmt):
-        head, tail = stmt[0], stmt[1:]
-        if head == "PRINT":
-            self.print_stmt(tail)
-        elif head == "LET":
-            self.let_stmt(tail)
-        elif head == "INPUT":
-            self.input_stmt(tail)
-        elif head == "IF":
-            self.if_stmt(tail)
-        elif head == "GOTO":
-            self.goto_stmt(tail)
-        elif head == "CLEAR":
-            self.clear_stmt()
-        elif head == "LIST":
-            self.list_stmt()
-        elif head == "RUN":
-            self.run_stmt()
-        elif head == "END":
-            self.end_stmt()
-    
-    def print_stmt(self, xs):
-        print(" ".join(self.expr_list(xs)))
-    
-    def let_stmt(self, xs):
-        head, tail = xs[0], xs[1]
-        self.symbols[head] = self.expr(tail)
-    
-    def input_stmt(self, xs):
-        for x in xs:
-            self.symbols[x] = str(input("? "))
-    
-    def if_stmt(self, xs):
-        head, tail = xs[0], xs[2:]
-        if self.expr(head) == "True":
-            self.stmt(tail)
-    
-    def goto_stmt(self, xs):
-        n = self.expr(xs[0])
-        self.curr = int(n)
-        self.run_stmt()
-    
-    def run_stmt(self):
-        stmts = self.gen_stmt(self.memory)
-        while (stmts):
-            if self.curr >= 0:
-                try:
-                    self.curr, line = stmts.__next__()
-                    self.stmt(line)
-                except:
-                    break
-            else: 
-                break
-    
-    def gen_stmt(self, memory):
-        for k in sorted(self.memory):
-            if k >= self.curr:
-                yield (k, self.memory[k])
-    
-    def end_stmt(self):
-        self.curr = -1
-    
-    def list_stmt(self):
-        for k in sorted(self.memory):
-            print(" ".join(list(self.memory[k])))
-    
-    def clear_stmt(self):
-        self.memory = {}
-    
-    def expr_list(self, xs):
-        return [self.expr(x) for x in xs]
-
-    def expr(self, x):
-        if re.match("^\".*\"$", x):
-            return x.replace("\"", "")
-        else:
-            vs = re.findall("[A-Z]", x)
-            if vs:
-                for v in vs:
-                    x = x.replace(v, self.var(v))
-            try:
-                return str(eval(x))
-            except:
-                return x.replace("\"", "")
-
-    def var(self, x):
-        return self.symbols[x]
-
 
 class Compiler(object):
     
     def __init__(self):
         self.parser = Parser()
         self.parse_tree = None
-        self.symbols = {}
-        self.malloc_symbols = {}
+        self.symbols = []
+        self.labels = {}
+        self.programm = None
 
     def __call__(self, program):
         self.parse_tree = self.parser(program)
-        print("#include <stdio.h>")
-        print("#include <stdlib.h>")
-        print("#include <string.h>")
-        print("int main (void) {")
+        self.programm = bytearray([k_TAG, k_VERSION, k_END])
         for line in self.parse_tree:
             if "LET" in line:
-                id = line[2]
+                id = line[1]
                 if id not in self.symbols:
-                    self.compile_stmt(line[1:])
-            elif "INPUT" in line:
-                id = line[2]
-                if id not in self.symbols:
-                    self.compile_var((id, '""'))
+                    self.symbols.append(id)
         for line in self.parse_tree:
-            self.compile_stmt(line)
-        print("}")
+            self.compile_line(line)
+        self.programm.append(k_END)
+        tbl = []
+        for c in self.programm:
+            tbl.append("%02X" % c)
+            print("%02X" % c, end="")
+        return "".join(tbl)
     
+    def compile_line(self, line):
+        if len(line) > 1 and line[1] == ":":
+            self.compile_label(line[0])
+            line = line[2:]
+        if line:
+            self.compile_stmt(line)
+
     def compile_stmt(self, stmt):
         head, tail = stmt[0], stmt[1:]
         if tail:
@@ -245,132 +162,134 @@ class Compiler(object):
                 self.compile_goto(tail)
             elif head == "PRINT":
                 self.compile_printf(tail)
-            elif head == "INPUT":
-                self.compile_input(tail)
             else:
-                self.compile_label(head)
                 self.compile_stmt(tail)
         else:
             if head == "END":
                 self.compile_return()
     
-    def compile_input(self, xs):
-        id, buffer = xs[0], 50
-        self.malloc_symbols[id] = buffer
-        print("{0} = malloc(sizeof(char) * {1}); \n\
-fgets({0}, {1}, stdin); \n\
-if ({0}[strlen({0}) - 1] == '\\n') {{ \n\
-{0}[strlen({0}) - 1] = '\\0'; \n\
-}}".format(id, buffer))
+    def compile_if(self, tokens):
+        tokens = self.compile_expression(tokens)
+        relop = {"=": k_EQUAL, "<>": k_NEQUAL, "<": k_LESS, "<=": k_LESSEQUAL, ">": k_GREATER, ">=": k_GREATEREQUAL}[tokens[0]]
+        tokens = self.compile_expression(tokens[1:])
+        self.programm.append(relop)
+        self.programm.append(k_IF)
+        idx = len(self.programm)
+        self.programm.extend([0, 0])
+        if tokens[0] == "THEN":
+            tokens = tokens[1:]
+        self.compile_stmt(tokens)
+        addr = len(self.programm)
+        self.programm[idx] = addr & 0xFF
+        self.programm[idx + 1] = (addr >> 8) & 0xFF
+        pass
 
-    def compile_if(self, xs):
-        cond, stmt = xs[0], xs[2:]
-        print("if (%s) {" % (cond))
-        self.compile_stmt(stmt)
-        print("}")
+    def compile_goto(self, tokens):
+        addr = self.labels[tokens[0]]
+        self.programm.append(k_GOTO)
+        self.programm.extend(addr.to_bytes(2, byteorder='little'))
 
-    def compile_goto(self, xs):
-        print("goto label_%s;" % xs[0])
-
-    def compile_var(self, xs):
-        id = xs[0]
-        if id in self.symbols:
-            self.compile_var_set(xs)
-        else:
-            self.compile_var_dec(xs)
-    
-    def compile_var_dec(self, xs):
-        t, id, v = None, xs[0], xs[1]
-        if self.is_quoted(v):
-            t = "char"
-        else:
-            t = "int"
-        self.symbols[id] = (t, v)
-        if t == "char":
-            print("%s* %s;" % (t, id))
-        elif t == "int":
-            print("%s %s;" % (t, id))
-
-    def compile_var_set(self, xs):
-        id, nv = xs[0], xs[1]
-        t, ov = self.symbols[id] 
-        self.symbols[id] = (t, nv)
-        print("%s = %s;" % (id, nv))
+    def compile_var(self, tokens):
+        var, tail =  tokens[0], tokens[1:]
+        if self.is_quoted(var):
+            pass
+        tail = self.compile_expression(tail)
+        self.programm.append(k_LET)
+        self.programm.append(self.symbols.index(var))
+        return tail
 
     def compile_comment(self, xs):
-        print("// %s" % xs[0].replace('"', ""))
+        pass
 
     def compile_label(self, n):
-        print("label_%s:" % n)
+        self.labels[n] = len(self.programm)
     
-    def compile_printf(self, xs):
-        fmt, args = [], []
-        for x in xs:
-            if x in self.symbols:
-                t, v = self.symbols[x]
-                if t == "char":
-                    fmt.append("%s")
-                elif t == "int":
-                    fmt.append("%d")
-                args.append(x)
+    def compile_printf(self, tokens):
+        while tokens:
+            if tokens[0][0] == '"':
+                self.programm.append(k_PRINTS)
+                tokens = self.compile_string(tokens)
             else:
-                try:
-                    x = int(eval(x))
-                    fmt.append("%d")
-                    args.append(str(x))
-                except:
-                    fmt.append("%s")
-                    args.append(x)
-        if fmt and args:
-            fmt = " ".join(fmt)
-            args = ", ".join(args)
-            print('printf("{0}\\n", {1});'.format(fmt, args))
+                tokens = self.compile_expression(tokens)
+                self.programm.append(k_PRINTV)
+            if tokens and tokens[0] == ",":
+                tokens = tokens[1:]
+        self.programm.append(k_PRINTNL)
 
+    def compile_expression(self, tokens):
+        tail = self.compile_term(tokens)
+        if len(tail) > 0:
+            if tail[0] == "+":
+                tail = self.compile_expression(tail[1:])
+                self.programm.append(k_ADD)
+                return tail
+            elif tail[0] == "-":
+                tail = self.compile_expression(tail[1:])
+                self.programm.append(k_SUB)
+                return tail
+        return tail
+            
+    def compile_string(self, tokens):
+        s = tokens[0]
+        self.programm.extend(s[1:-1].encode("ascii"))
+        self.programm.append(0)
+        return tokens[1:]
+    
+    def compile_term(self, tokens):
+        tail = self.compile_factor(tokens)
+        if len(tail) > 0:
+            if tail[0] == "*":
+                tail = self.compile_term(tail[1:])
+                self.programm.append(k_MUL)
+                return tail
+            elif tail[0] == "/":
+                tail = self.compile_term(tail[1:])
+                self.programm.append(k_DIV)
+                return tail
+        return tail
+    
+    def compile_factor(self, tokens):
+        if tokens[0] == "(":
+            return self.compile_expression(tokens[1:])
+        elif tokens[0] in self.symbols:
+            self.programm.append(k_VAR)
+            self.programm.append(self.symbols.index(tokens[0]))
+            return tokens[1:]
+        else:
+            num = int(tokens[0])
+            if num < 256:
+                self.programm.append(k_BYTENUM)
+                self.programm.append(num)
+            else:
+                self.programm.append(k_NUMBER)
+                self.programm.extend(num.to_bytes(4, byteorder='little'))
+            return tokens[1:]
+        
     def compile_return(self):
-        for id in self.malloc_symbols:
-            print("free(%s);" % id)
-        print("return 0;")
+        self.programm.append(k_END)
 
     def is_quoted(self, s):
         return re.match('^".*"$', s)
-
 
 class TinyBasic(object):
     
     def __init__(self):
         self.parser = Parser()
-        self.interpreter = Interpreter()
         self.compiler = Compiler()
     
     def parse(self, program):
         return self.parser(program)
     
-    def interpret(self, program):
-        self.interpreter(program)
-
     def compile(self, program):
-        self.compiler(program)
-
-    def repl(self):
-        line = str(input("> "))
-        if line == "QUIT":
-            sys.exit(0)
-        try: 
-            self.interpret(line)
-        except Exception as err: 
-            if line:
-                print("parse error")
-                print(err)
-        self.repl()
-
+        return self.compiler(program)
 
 if __name__ == "__main__":
-
+    sys.argv = ["tinybasic.py", "./test.bas"]
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("path", nargs='?')
     arg_parser.add_argument("-p", "--parse", action="store_true")
-    arg_parser.add_argument("-c", "--compile", action="store_true")
     args = arg_parser.parse_args()
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     tiny_basic = TinyBasic()
 
@@ -381,9 +300,6 @@ if __name__ == "__main__":
                 if args.parse:
                     for line in tiny_basic.parse(program):
                         print(line)
-                elif args.compile:
-                    tiny_basic.compile(program)
                 else:
-                    tiny_basic.interpret(program)
-    else:
-        tiny_basic.repl()
+                    s = tiny_basic.compile(program)
+                    os.system(".\\Debug\\demo.exe %s" % s)
