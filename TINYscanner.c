@@ -3,10 +3,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <assert.h>
-
-#define IXX_U8 unsigned char
-#define IXX_U16 unsigned short
-#define IXX_U32 unsigned long
+#include "TINY.h"
 
 #define is_alpha(x)   (Ascii[x & 0x7F] & 0x01)
 #define is_digit(x)   (Ascii[x & 0x7F] & 0x02)
@@ -27,7 +24,7 @@ static char Ascii[] = {
   0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x70 - 0x7F
 };
 
-const char *TINY_Scanner(const char *pc8_in, char *pc8_out)
+char *TINY_Scanner(char *pc8_in, char *pc8_out)
 {
   char c8;
 
@@ -105,13 +102,21 @@ const char *TINY_Scanner(const char *pc8_in, char *pc8_out)
     }
   }
 
+  // End of string
+  if((c8 == '\n') || (c8 == '\r') || (c8 == '\0'))
+  {
+    *pc8_out = '\0';
+    return NULL;
+  }
+
+  // Single character
   *pc8_out++ = c8;
-  *pc8_out++ = '\0';
   pc8_in++;
+  *pc8_out++ = '\0';
   return pc8_in;
 }
 
-
+#ifdef TEST
 int main(void)
 {
   char s[] = "LET A = 1234 * 2 - 1";
@@ -142,3 +147,4 @@ int main(void)
 
   return 0;
 }
+#endif
