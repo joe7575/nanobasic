@@ -153,7 +153,15 @@ IXX_U16 TINY_Run(IXX_U8* pu8_programm)
       case k_DIV:
         tmp2 = DPOP();
         tmp1 = DPOP();
-        DPUSH(tmp1 / tmp2);
+        if(tmp2 == 0)
+        {
+          PRINTF("Error: Division by zero\n");
+          DPUSH(0);
+        }
+        else
+        {
+          DPUSH(tmp1 / tmp2);
+        }
         pc += 1;
         break;
       case k_EQUAL:
