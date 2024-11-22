@@ -15,7 +15,7 @@
 
 // Token types
 enum {
-  LET = 128, IF, THEN, PRINT, GOTO, END, REM, 
+  LET = 128, IF, THEN, PRINT, GOTO, GOSUB, RETURN, END, REM, 
   NUM, STR, ID, EQ, NQ, LE, LQ, GR, GQ
 };
 
@@ -27,6 +27,7 @@ typedef struct {
 } t_SYM;
 
 static t_SYM as_Symbol[MAX_NUM_SYM] = {0};
+static IXX_U8 u8_NumSymbols = 0;
 static IXX_U8 au8_Code[MAX_CODE_LEN];
 static IXX_U16 u16_Pc = 0;
 static IXX_U16 u16_Linenum = 0;
@@ -43,16 +44,17 @@ static IXX_U8 lookahead(void);
 static IXX_U8 next(void);
 static void match(IXX_U8 expected);
 static void compile_line(void);
-static void compile_stmt(IXX_U8 tok);
+static void compile_stmt(void);
 static void compile_if(void);
 static void compile_goto(void);
+static void compile_gosub(void);
+static void compile_return(void);
 static void compile_var(void);
 static void compile_comment(void);
 static void compile_print(void);
-static void compile_expression(IXX_U8 tok);
-static void compile_term(IXX_U8 tok);
-static void compile_factor(IXX_U8 tok);
-static void compile_return(void);
+static void compile_expression(void);
+static void compile_term(void);
+static void compile_factor(void);
 static void compile_end(void);
 static IXX_U16 sym_add(char *id, IXX_U32 val, IXX_U8 type);
 
@@ -65,18 +67,34 @@ IXX_U8 *TINY_Compiler(char *filename, IXX_U16 *pu16_len)
     return NULL;
   }
 
+  // Add keywords
+  sym_add("let", 0, LET);
+  sym_add("if", 0, IF);
+  sym_add("then", 0, THEN);
+  sym_add("print", 0, PRINT);
+  sym_add("goto", 0, GOTO);
+  sym_add("gosub", 0, GOSUB);
+  sym_add("return", 0, RETURN);
+  sym_add("end", 0, END);
+  sym_add("rem", 0, REM);
+
+  printf("- pass1\n");
   u16_Linenum = 0;
+  u16_Pc = 0;
   au8_Code[u16_Pc++] = k_TAG;
   au8_Code[u16_Pc++] = k_VERSION;
-  // Add keywords
-  sym_add("LET", 0, LET);
-  sym_add("IF", 0, IF);
-  sym_add("THEN", 0, THEN);
-  sym_add("PRINT", 0, PRINT);
-  sym_add("GOTO", 0, GOTO);
-  sym_add("END", 0, END);
-  sym_add("REM", 0, REM);
+  u8_NumSymbols = 0;
+  while(fgets(ac8_Line, MAX_STR_LEN, fp) != NULL)
+  {
+    u16_Linenum++;
+    pc8_pos = pc8_next = ac8_Line;
+    compile_line();
+  }
 
+  printf("- pass2\n");
+  fseek(fp, 0, SEEK_SET);
+  u16_Linenum = 0;
+  u16_Pc = 2;
   while(fgets(ac8_Line, MAX_STR_LEN, fp) != NULL)
   {
     u16_Linenum++;
@@ -96,7 +114,6 @@ static IXX_U8 next_token(void)
     return 0; // End of line
   }
   pc8_next = TINY_Scanner(pc8_pos, ac8_Buff);
-  printf("Token: %s\n", ac8_Buff);
   if(ac8_Buff[0] == '\0')
   {
     return 0; // End of line
@@ -116,7 +133,7 @@ static IXX_U8 next_token(void)
   }
   if(isalpha(ac8_Buff[0]))
   {
-    u16_SymIdx = sym_add(ac8_Buff, 0, ID);
+    u16_SymIdx = sym_add(ac8_Buff, u8_NumSymbols, ID);
     return as_Symbol[u16_SymIdx].type;
   }
   if(ac8_Buff[0] == '<')
@@ -145,19 +162,23 @@ static IXX_U8 next_token(void)
 
 static IXX_U8 lookahead(void)
 {
-  u8_NextTok = next_token();
+  if(pc8_pos == pc8_next)
+  {
+    u8_NextTok = next_token();
+  }
+  //printf("lookahead: %s\n", ac8_Buff);
   return u8_NextTok;
 }
 
 static IXX_U8 next(void)
 {
-  IXX_U8 tok = u8_NextTok;
   if(pc8_pos == pc8_next)
   {
-    tok = lookahead();
+    u8_NextTok = next_token();
   }
   pc8_pos = pc8_next;
-  return tok;
+  //printf("next: %s\n", ac8_Buff);
+  return u8_NextTok;
 }
 
 static void match(IXX_U8 expected) {
@@ -172,31 +193,36 @@ static void match(IXX_U8 expected) {
 
 static void compile_line(void)
 {
-  IXX_U8 tok = next();
+  IXX_U8 tok = lookahead();
   if(tok == ID)
   {
+    match(ID);
     IXX_U16 idx = u16_SymIdx;
-    tok = next();
+    tok = lookahead();
     if(tok == ':')
     {
+      match(':');
       as_Symbol[idx].value = u16_Pc;
-      tok = next();
+      tok = lookahead();
     }
   }
   if(tok)
   {
-    compile_stmt(tok);
+    compile_stmt();
   }
 }
 
-static void compile_stmt(IXX_U8 tok)
+static void compile_stmt(void)
 {
+  IXX_U8 tok = next();
   switch(tok)
   {
     case IF: compile_if(); break;
     case LET: compile_var(); break;
     case REM: break;
     case GOTO: compile_goto(); break;
+    case GOSUB: compile_gosub(); break;
+    case RETURN: compile_return(); break;
     case PRINT: compile_print(); break;
     case END: compile_end(); break;
     default: printf("Error: unknown statement\n"); break;
@@ -207,9 +233,9 @@ static void compile_if(void)
 {
   IXX_U8 tok, op;
 
-  compile_expression(next());
+  compile_expression();
   op = next();
-  compile_expression(next());
+  compile_expression();
   switch(op)
   {
     case EQ: au8_Code[u16_Pc++] = k_EQUAL; break;
@@ -223,7 +249,7 @@ static void compile_if(void)
   IXX_U16 pos = u16_Pc;
   u16_Pc += 2;
   match(THEN);
-  compile_stmt(next());
+  compile_stmt();
   au8_Code[pos] = u16_Pc & 0xFF;
   au8_Code[pos + 1] = (u16_Pc >> 8) & 0xFF;
 }
@@ -237,23 +263,38 @@ static void compile_goto(void)
   au8_Code[u16_Pc++] = (addr >> 8) & 0xFF;
 }
 
+static void compile_gosub(void)
+{
+  match(ID);
+  IXX_U16 addr = as_Symbol[u16_SymIdx].value;
+  au8_Code[u16_Pc++] = k_GOSUB;
+  au8_Code[u16_Pc++] = addr & 0xFF;
+  au8_Code[u16_Pc++] = (addr >> 8) & 0xFF;
+}
+
+static void compile_return(void)
+{
+  au8_Code[u16_Pc++] = k_RETURN;
+}
+
 static void compile_var(void)
 {
   IXX_U8 tok = next();
   IXX_U16 idx = u16_SymIdx;
   match('=');
-  compile_expression(next());
-  au8_Code[u16_Pc++] = k_VAR;
+  compile_expression();
+  au8_Code[u16_Pc++] = k_LET;
   au8_Code[u16_Pc++] = as_Symbol[idx].value;
 }
 
 static void compile_print(void)
 {
-  IXX_U8 tok = next();
+  IXX_U8 tok = lookahead();
   while(tok)
   {
     if(tok == STR)
     {
+      match(STR);
       IXX_U16 len = strlen(ac8_Buff);
       ac8_Buff[len - 1] = '\0';
       au8_Code[u16_Pc++] = k_PRINTS;
@@ -262,25 +303,27 @@ static void compile_print(void)
     }
     else
     {
-      compile_expression(tok);
+      compile_expression();
       au8_Code[u16_Pc++] = k_PRINTV;
     }
-    tok = next();
+    tok = lookahead();
     if(tok == ',')
     {
-      tok = next();
+      match(',');
+      tok = lookahead();
     }
   }
   au8_Code[u16_Pc++] = k_PRINTNL;
 }
 
-static void compile_expression(IXX_U8 tok)
+static void compile_expression(void)
 {
-  compile_term(tok);
-  IXX_U8 op = next();
+  compile_term();
+  IXX_U8 op = lookahead();
   while(op == '+' || op == '-')
   {
-    compile_term(next());
+    match(op);
+    compile_term();
     if(op == '+')
     {
       au8_Code[u16_Pc++] = k_ADD;
@@ -289,17 +332,18 @@ static void compile_expression(IXX_U8 tok)
     {
       au8_Code[u16_Pc++] = k_SUB;
     }
-    op = next();
+    op = lookahead();
   }
 }
 
-static void compile_term(IXX_U8 tok)
+static void compile_term(void)
 {
-  compile_factor(tok);
-  IXX_U8 op = next();
+  compile_factor();
+  IXX_U8 op = lookahead();
   while(op == '*' || op == '/')
   {
-    compile_factor(next());
+    match(op);
+    compile_factor();
     if(op == '*')
     {
       au8_Code[u16_Pc++] = k_MUL;
@@ -308,19 +352,22 @@ static void compile_term(IXX_U8 tok)
     {
       au8_Code[u16_Pc++] = k_DIV;
     }
-    op = next();
+    op = lookahead();
   }
 }
 
-static void compile_factor(IXX_U8 tok)
+static void compile_factor(void)
 {
+  IXX_U8 tok = lookahead();
   if(tok == '(')
   {
-    compile_expression(next());
+    match('(');
+    compile_expression();
     match(')');
   }
   else if(tok == NUM)
   {
+    match(NUM);
     if(u32_Value < 256)
     {
       au8_Code[u16_Pc++] = k_BYTENUM;
@@ -337,14 +384,10 @@ static void compile_factor(IXX_U8 tok)
   }
   else
   {
+    match(ID);
     au8_Code[u16_Pc++] = k_VAR;
     au8_Code[u16_Pc++] = as_Symbol[u16_SymIdx].value;
   }
-}
-
-static void compile_return(void)
-{
-  au8_Code[u16_Pc++] = k_RETURN;
 }
 
 static void compile_end(void)
@@ -371,6 +414,7 @@ static IXX_U16 sym_add(char *id, IXX_U32 val, IXX_U8 type)
       memcpy(as_Symbol[i].name, id, MIN(strlen(id), MAX_SYM_LEN));
       as_Symbol[i].value = val;
       as_Symbol[i].type = type;
+      u8_NumSymbols++;
       return i;
     }
   }

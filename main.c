@@ -29,7 +29,7 @@ int main(int argc, char* argv[])
   for(IXX_U16 i = 0; i < size; i++)
   {
     printf("%02X ", code[i]);
-    if((i % 32) == 15)
+    if((i % 32) == 31)
     {
       printf("\n");
     }
