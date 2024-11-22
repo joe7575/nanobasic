@@ -36,7 +36,7 @@ int main(int argc, char* argv[])
   }
   printf("\n");
 
-  TINY_Run(code);
+  TINY_Run(code, size);
 
   printf("Ready.\n");
   return 0;

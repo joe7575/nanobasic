@@ -44,6 +44,10 @@ char *TINY_Scanner(char *pc8_in, char *pc8_out)
       {
         *pc8_out++ = *pc8_in++;
       }
+      if(*pc8_in == '$') // String variable
+      {
+        *pc8_out++ = *pc8_in++;
+      }
       *pc8_out++ = '\0';
       return pc8_in;
     }

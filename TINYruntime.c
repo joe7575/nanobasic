@@ -80,7 +80,7 @@
     Number of executed instructions
 
 ***************************************************************************************************/
-IXX_U16 TINY_Run(IXX_U8* pu8_programm)
+IXX_U16 TINY_Run(IXX_U8* pu8_programm, IXX_U16 u16_len)
 {
   IXX_U32 variables[NUM_VARS] = { 0 };
   IXX_U32 datastack[STACK_SIZE] = { 0 };
@@ -103,8 +103,8 @@ IXX_U16 TINY_Run(IXX_U8* pu8_programm)
       case k_END:
         return cnt;
       case k_PRINTS:
-        PRINTF("%s ", &pu8_programm[pc + 1]);
-        pc += strlen((char*)&pu8_programm[pc + 1]) + 2;
+        PRINTF("%s ", &pu8_programm[DPOP() % u16_len] );
+        pc += 1;
         break;
       case k_PRINTV:
         PRINTF("%d ", DPOP());
@@ -219,6 +219,27 @@ IXX_U16 TINY_Run(IXX_U8* pu8_programm)
         {
           pc += 3;
         }
+        break;
+      case k_AND:
+        tmp2 = DPOP();
+        tmp1 = DPOP();
+        DPUSH(tmp1 && tmp2);
+        pc += 1;
+        break;
+      case k_OR:
+        tmp2 = DPOP();
+        tmp1 = DPOP();
+        DPUSH(tmp1 || tmp2);
+        pc += 1;
+        break;
+      case k_NOT:
+        DPUSH(!DPOP());
+        pc += 1;
+        break;
+      case k_STRING:
+        tmp1 = pu8_programm[pc + 1]; // string length
+        DPUSH(pc + 2);  // push string address
+        pc += tmp1 + 2;
         break;
       default:
         return cnt;
