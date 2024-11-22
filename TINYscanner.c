@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include "TINY.h"
+#include "TINYint.h"
 
 #define is_alpha(x)   (Ascii[x & 0x7F] & 0x01)
 #define is_digit(x)   (Ascii[x & 0x7F] & 0x02)
@@ -97,9 +98,12 @@ char *TINY_Scanner(char *pc8_in, char *pc8_out)
       *pc8_out++ = '\0';
       return pc8_in;
     }
-    {
-      pc8_in++;
-    }
+
+    // Single character
+    *pc8_out++ = c8;
+    pc8_in++;
+    *pc8_out++ = '\0';
+    return pc8_in;
   }
 
   // End of string
@@ -108,12 +112,6 @@ char *TINY_Scanner(char *pc8_in, char *pc8_out)
     *pc8_out = '\0';
     return NULL;
   }
-
-  // Single character
-  *pc8_out++ = c8;
-  pc8_in++;
-  *pc8_out++ = '\0';
-  return pc8_in;
 }
 
 #ifdef TEST

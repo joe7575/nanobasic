@@ -4,10 +4,12 @@ project(tinybasic VERSION 0.1.0 LANGUAGES C)
 #include_directories(./core)
 
 add_executable(tinybasic
-    ./TINYsymbols.c
     ./TINYscanner.c
     ./TINYcompiler.c
+    ./TINYruntime.c
+    ./main.c
     ./TINY.h
+    ./TINYint.h
 )
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})

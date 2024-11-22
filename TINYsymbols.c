@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include "TINY.h"
+#include "TINYint.h"
 
 #define SYM(s)        *(IXX_U32*)(s) 
 
