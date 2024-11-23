@@ -3,11 +3,14 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <assert.h>
+#include <stdarg.h>
 #include "TINY.h"
 #include "TINYint.h"
 
+//#define DEBUG
+
 #define MAX_STR_LEN     256
-#define MAX_NUM_SYM     64
+#define MAX_NUM_SYM     256
 #define MAX_SYM_LEN     9
 #define MAX_CODE_LEN    1024
 
@@ -16,22 +19,34 @@
 // Token types
 enum {
   LET = 128, IF, THEN, PRINT, GOTO, GOSUB, RETURN, END, REM, AND, OR, NOT,
-  NUM, STR, ID, SID, EQ, NQ, LE, LQ, GR, GQ 
+  NUM, STR, ID, SID, EQ, NQ, LE, LQ, GR, GQ,
+  PEEK, VECT,
+  LABEL,
+};
+
+// Keywords
+static char *Keywords[] = {
+  "let", "if", "then", "print", "goto", "gosub", "return", "end", "rem", "and", "or", "not",
+  "number", "string", "variable", "string variable", "=", "<>", "<", "<=", ">", ">=",
+  "peek", "vector",
+  "label",
 };
 
 // Symbol table
 typedef struct {
   char name[MAX_SYM_LEN];
-  IXX_U8 type;    // ID, NUM, IF,...
+  IXX_U8  type;   // ID, NUM, IF,...
   IXX_U32 value;  // Variable index (0..n) or label address
 } t_SYM;
 
 static t_SYM as_Symbol[MAX_NUM_SYM] = {0};
-static IXX_U8 u8_NumSymbols = 0;
+static IXX_U8 u8_CurrVarIdx = 0;
 static IXX_U8 au8_Code[MAX_CODE_LEN];
 static IXX_U16 u16_Pc = 0;
 static IXX_U16 u16_Linenum = 0;
+static IXX_U16 u16_ErrCount = 0;
 static IXX_U16 u16_SymIdx = 0;
+static IXX_U16 u16_StartOfVars = 0;
 static char ac8_Line[MAX_STR_LEN];
 static char ac8_Buff[MAX_STR_LEN];
 static char *pc8_pos = NULL;
@@ -39,10 +54,12 @@ static char *pc8_next = NULL;
 static IXX_U32 u32_Value;
 static IXX_U8 u8_NextTok;
 
+static void compile(FILE *fp);
 static IXX_U8 next_token(void);
 static IXX_U8 lookahead(void);
 static IXX_U8 next(void);
 static void match(IXX_U8 expected);
+static void label(void);
 static void compile_line(void);
 static void compile_stmt(void);
 static void compile_if(void);
@@ -62,17 +79,25 @@ static void compile_add_expr(void);
 static void compile_term(void);
 static void compile_factor(void);
 static void compile_end(void);
+static IXX_U8 compile_width(IXX_BOOL bSet);
 static IXX_U16 sym_add(char *id, IXX_U32 val, IXX_U8 type);
+static void error(char *fmt, ...);
 
-IXX_U8 *TINY_Compiler(char *filename, IXX_U16 *pu16_len)
+void TINY_DumpCode(IXX_U8 *code, IXX_U16 size)
 {
-  FILE *fp = fopen(filename, "r");
-  if(fp == NULL)
+  for(IXX_U16 i = 0; i < size; i++)
   {
-    printf("Error: could not open file %s\n", filename);
-    return NULL;
+    printf("%02X ", code[i]);
+    if((i % 32) == 31)
+    {
+      printf("\n");
+    }
   }
+  printf("\n");
+}
 
+IXX_U8 *TINY_Compiler(char *filename, IXX_U16 *pu16_len, IXX_U8 *pu8_num_vars)
+{
   // Add keywords
   sym_add("let", 0, LET);
   sym_add("if", 0, IF);
@@ -86,34 +111,76 @@ IXX_U8 *TINY_Compiler(char *filename, IXX_U16 *pu16_len)
   sym_add("and", 0, AND);
   sym_add("or", 0, OR);
   sym_add("not", 0, NOT);
+  sym_add("peek", 0, PEEK);
+  u16_StartOfVars = u8_CurrVarIdx;
+
+  FILE *fp = fopen(filename, "r");
+  if(fp == NULL)
+  {
+    printf("Error: could not open file %s\n", filename);
+    return NULL;
+  }
+
+  u8_CurrVarIdx = 0;
 
   printf("- pass1\n");
-  u16_Linenum = 0;
-  u16_Pc = 0;
-  au8_Code[u16_Pc++] = k_TAG;
-  au8_Code[u16_Pc++] = k_VERSION;
-  u8_NumSymbols = 0;
-  while(fgets(ac8_Line, MAX_STR_LEN, fp) != NULL)
+  compile(fp);
+
+  if(u16_ErrCount > 0)
   {
-    u16_Linenum++;
-    pc8_pos = pc8_next = ac8_Line;
-    compile_line();
+    *pu16_len = 0;
+    *pu8_num_vars = 0;
+    return NULL;
   }
 
   printf("- pass2\n");
-  fseek(fp, 0, SEEK_SET);
+  compile(fp);
+
+  fclose(fp);
+
+  *pu16_len = u16_Pc;
+  *pu8_num_vars = u8_CurrVarIdx;
+  return au8_Code;
+}
+
+void TINY_OutputSymbolTable(void)
+{
+  printf("#### Symbol table ####\n");
+  printf("Variables:\n");
+  for(IXX_U16 i = u16_StartOfVars; i < MAX_NUM_SYM; i++)
+  {
+    if(as_Symbol[i].name[0] != '\0' && as_Symbol[i].type != LABEL)
+    {
+      printf("%16s: %u\n", as_Symbol[i].name, as_Symbol[i].value);
+    }
+  }
+  printf("Labels:\n");
+  for(IXX_U16 i = u16_StartOfVars; i < MAX_NUM_SYM; i++)
+  {
+    if(as_Symbol[i].name[0] != '\0' && as_Symbol[i].type == LABEL)
+    {
+      printf("%16s: %u\n", as_Symbol[i].name, as_Symbol[i].value);
+    }
+  }
+}
+
+static void compile(FILE *fp)
+{
   u16_Linenum = 0;
-  u16_Pc = 2;
+  u16_ErrCount = 0;
+  u16_Pc = 0;
+  au8_Code[u16_Pc++] = k_TAG;
+  au8_Code[u16_Pc++] = k_VERSION;
+  sym_add("rx", u8_CurrVarIdx, VECT);
+  sym_add("tx", u8_CurrVarIdx, VECT);
+
+  fseek(fp, 0, SEEK_SET);
   while(fgets(ac8_Line, MAX_STR_LEN, fp) != NULL)
   {
     u16_Linenum++;
     pc8_pos = pc8_next = ac8_Line;
     compile_line();
   }
-
-  fclose(fp);
-  *pu16_len = u16_Pc;
-  return au8_Code;
 }
 
 static IXX_U8 next_token(void)
@@ -145,7 +212,7 @@ static IXX_U8 next_token(void)
     IXX_U16 len = strlen(ac8_Buff);
     IXX_U8 type = ac8_Buff[len - 1] == '$' ? SID : ID;
 
-    u16_SymIdx = sym_add(ac8_Buff, u8_NumSymbols, type);
+    u16_SymIdx = sym_add(ac8_Buff, u8_CurrVarIdx, type);
     return as_Symbol[u16_SymIdx].type;
   }
   if(ac8_Buff[0] == '<')
@@ -168,8 +235,8 @@ static IXX_U8 next_token(void)
   {
     return ac8_Buff[0]; // Single character
   }
-  printf("Error: unknown token %s\n", ac8_Buff);
-  exit(-1);
+  error("unknown token %c", ac8_Buff[0]);
+  return 0;
 }
 
 static IXX_U8 lookahead(void)
@@ -189,27 +256,44 @@ static IXX_U8 next(void)
     u8_NextTok = next_token();
   }
   pc8_pos = pc8_next;
+#ifdef DEBUG
   printf("next: %s\n", ac8_Buff);
+#endif
   return u8_NextTok;
 }
 
 static void match(IXX_U8 expected) {
   IXX_U8 tok = next();
   if (tok == expected) {
-      return;
   } else {
-      printf("%d: expected token: %d\n", u16_Linenum, tok);
-      exit(-1);
+    if (expected >= LET && expected <= VECT) {
+      error("%s expected instead of '%s'", Keywords[expected - LET], ac8_Buff);
+    } else {
+      error("'%c' expected instead of '%s'", expected, ac8_Buff);
+    }
   }
+}
+
+static void label(void)
+{
+  IXX_U8 tok = lookahead();
+  if(tok == ID) // Token recognized as variable?
+  {
+    // Convert to label
+    as_Symbol[u16_SymIdx].type = LABEL;
+    u8_NextTok = LABEL;
+    u8_CurrVarIdx--;
+  }
+  match(LABEL);
 }
 
 static void compile_line(void)
 {
   IXX_U8 tok = lookahead();
-  if(tok == ID)
+  if(tok == ID || tok == LABEL)
   {
-    match(ID);
     IXX_U16 idx = u16_SymIdx;
+    label();
     tok = lookahead();
     if(tok == ':')
     {
@@ -243,7 +327,7 @@ static void compile_stmt(void)
     case RETURN: compile_return(); break;
     case PRINT: compile_print(); break;
     case END: compile_end(); break;
-    default: printf("Error: unknown statement '%u'\n", tok); break;
+    default: error("unknown statement '%u'", tok); break;
   }
 }
 
@@ -263,7 +347,7 @@ static void compile_if(void)
 
 static void compile_goto(void)
 {
-  match(ID);
+  label();
   IXX_U16 addr = as_Symbol[u16_SymIdx].value;
   au8_Code[u16_Pc++] = k_GOTO;
   au8_Code[u16_Pc++] = addr & 0xFF;
@@ -272,7 +356,7 @@ static void compile_goto(void)
 
 static void compile_gosub(void)
 {
-  match(ID);
+  label();
   IXX_U16 addr = as_Symbol[u16_SymIdx].value;
   au8_Code[u16_Pc++] = k_GOSUB;
   au8_Code[u16_Pc++] = addr & 0xFF;
@@ -289,29 +373,53 @@ static void compile_var(void)
   IXX_U8 tok = next();
   IXX_U16 idx = u16_SymIdx;
 
-  match('=');
   if(tok == SID) // let a$ = "string"
   {
+    match('=');
     compile_string();
+    // Var[value] = pop()
+    au8_Code[u16_Pc++] = k_LET;
+    au8_Code[u16_Pc++] = as_Symbol[idx].value;
   }
-  else // let a = expression
+  else if(tok == ID) // let a = expression
   {
+    match('=');
     compile_expression();
+    // Var[value] = pop()
+    au8_Code[u16_Pc++] = k_LET;
+    au8_Code[u16_Pc++] = as_Symbol[idx].value;
   }
-  // Var[value] = pop()
-  au8_Code[u16_Pc++] = k_LET;
-  au8_Code[u16_Pc++] = as_Symbol[idx].value;
+  else if(tok == VECT) // let rx[0] = 1
+  {
+    match('[');
+    compile_expression();
+    IXX_U8 instr = compile_width(1);
+    match(']');
+    match('=');
+    compile_expression();
+    au8_Code[u16_Pc++] = instr;
+    au8_Code[u16_Pc++] = as_Symbol[idx].value;
+  }
+  else
+  {
+    error("unknown variable type '%u'", tok);
+  }
 }
 
 static void remark(void)
 {
   // Skip to end of line
-  while(next() != 0);
+  pc8_pos[0] = '\0';
 }
 
 static void compile_print(void)
 {
   IXX_U8 tok = lookahead();
+  if(tok == 0)
+  {
+    au8_Code[u16_Pc++] = k_PRINTNL;
+    return;
+  }
   while(tok)
   {
     if(tok == STR)
@@ -335,10 +443,19 @@ static void compile_print(void)
     if(tok == ',')
     {
       match(',');
+      au8_Code[u16_Pc++] = k_PRINTT;
       tok = lookahead();
     }
+    else if(tok == ';')
+    {
+      match(';');
+       tok = lookahead();
+    }
+    else
+    {
+      au8_Code[u16_Pc++] = k_PRINTNL;
+    }
   }
-  au8_Code[u16_Pc++] = k_PRINTNL;
 }
 
 static void compile_string(void)
@@ -437,13 +554,17 @@ static void compile_term(void)
 {
   compile_factor();
   IXX_U8 op = lookahead();
-  while(op == '*' || op == '/')
+  while(op == '*' || op == '/' || op == '%')
   {
     match(op);
     compile_factor();
     if(op == '*')
     {
       au8_Code[u16_Pc++] = k_MUL;
+    }
+    else if(op == '%')
+    {
+      au8_Code[u16_Pc++] = k_MOD;
     }
     else
     {
@@ -456,40 +577,87 @@ static void compile_term(void)
 static void compile_factor(void)
 {
   IXX_U8 tok = lookahead();
-  if(tok == '(')
+  switch(tok)
   {
-    match('(');
-    compile_expression();
-    match(')');
-  }
-  else if(tok == NUM)
-  {
-    match(NUM);
-    if(u32_Value < 256)
-    {
-      au8_Code[u16_Pc++] = k_BYTENUM;
-      au8_Code[u16_Pc++] = u32_Value;
-    }
-    else
-    {
-      au8_Code[u16_Pc++] = k_NUMBER;
-      au8_Code[u16_Pc++] = u32_Value & 0xFF;
-      au8_Code[u16_Pc++] = (u32_Value >> 8) & 0xFF;
-      au8_Code[u16_Pc++] = (u32_Value >> 16) & 0xFF;
-      au8_Code[u16_Pc++] = (u32_Value >> 24) & 0xFF;
-    }
-  }
-  else
-  {
-    match(ID);
-    au8_Code[u16_Pc++] = k_VAR;
-    au8_Code[u16_Pc++] = as_Symbol[u16_SymIdx].value;
+    case '(':
+      match('(');
+      compile_expression();
+      match(')');
+      break;
+    case NUM:
+      match(NUM);
+      if(u32_Value < 256)
+      {
+        au8_Code[u16_Pc++] = k_BYTENUM;
+        au8_Code[u16_Pc++] = u32_Value;
+      }
+      else
+      {
+        au8_Code[u16_Pc++] = k_NUMBER;
+        au8_Code[u16_Pc++] = u32_Value & 0xFF;
+        au8_Code[u16_Pc++] = (u32_Value >> 8) & 0xFF;
+        au8_Code[u16_Pc++] = (u32_Value >> 16) & 0xFF;
+        au8_Code[u16_Pc++] = (u32_Value >> 24) & 0xFF;
+      }
+      break;
+    case ID:
+      match(ID);
+      au8_Code[u16_Pc++] = k_VAR;
+      au8_Code[u16_Pc++] = as_Symbol[u16_SymIdx].value;
+      break;
+    case PEEK:
+      match(PEEK);
+      match('(');
+      compile_expression();
+      match(')');
+      au8_Code[u16_Pc++] = k_FUNC;
+      au8_Code[u16_Pc++] = k_PEEK;
+      break;
+    case VECT:
+      IXX_U8 val = as_Symbol[u16_SymIdx].value;
+      match(VECT);
+      match('[');
+      compile_expression();
+      IXX_U8 instr = compile_width(0);
+      match(']');
+      au8_Code[u16_Pc++] = instr;
+      au8_Code[u16_Pc++] = val;
+      break;
+    default:
+      error("unknown factor '%u'", tok);
+      break;
   }
 }
 
 static void compile_end(void)
 {
   au8_Code[u16_Pc++] = k_END;
+}
+
+/*
+ Return instructions for vector set operations.
+ To get get instructions, add 1 to the instruction.
+*/
+static IXX_U8 compile_width(IXX_BOOL bSet)
+{
+  IXX_U8 tok = lookahead();
+  if(tok == ',')
+  {
+    match(',');
+    tok = lookahead();
+    if(tok == NUM)
+    {
+      IXX_U8 val = u32_Value;
+      match(NUM);
+      if(val == 1) return bSet ? k_VECTS1 : k_VECTG1;
+      if(val == 2) return bSet ? k_VECTS2 : k_VECTG2;
+      if(val == 4) return bSet ? k_VECTS4 : k_VECTG4;
+      error("unknown width '%u'", val);
+      return 0;
+    }
+    error("number expected");
+  }
+  return bSet ? k_VECTS1 : k_VECTG1;
 }
 
 static IXX_U16 sym_add(char *id, IXX_U32 val, IXX_U8 type)
@@ -511,9 +679,22 @@ static IXX_U16 sym_add(char *id, IXX_U32 val, IXX_U8 type)
       memcpy(as_Symbol[i].name, id, MIN(strlen(id), MAX_SYM_LEN));
       as_Symbol[i].value = val;
       as_Symbol[i].type = type;
-      u8_NumSymbols++;
+      u8_CurrVarIdx++;
       return i;
     }
   }
   return -1;
+}
+
+static void error(char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  printf("Error in line %u: ", u16_Linenum);
+  vprintf(fmt, args);
+  va_end(args);
+  printf("\n");
+  u16_ErrCount++;
+  pc8_pos = pc8_next;
+  pc8_pos[0] = '\0';
 }

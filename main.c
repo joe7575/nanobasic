@@ -8,35 +8,31 @@
 
 int main(int argc, char* argv[])
 {
-  IXX_U8 buffer[256];
   IXX_U16 size;
-#if 0
-  char s[] = "BC0100040A00000004030000000904040000000706000141203D000500020305000401000000070600050004640000000D143700111600050002030000";
-  TINY_Hex2Bin(s, strlen(s), buffer);
-  TINY_Run(buffer);
-  return 0;
-#endif
+  IXX_U8 num_vars;
  
   if (argc != 2)
   {
     printf("Usage: %s <programm>\n", argv[0]);
     return 1;
   }
-  printf("Tiny Basic V1.0\n");
+  printf("Tiny Basic Compiler V1.0\n");
 
-  IXX_U8 *code = TINY_Compiler("../test.bas", &size);
+  IXX_U8 *code = TINY_Compiler("../test.bas", &size, &num_vars);
 
-  for(IXX_U16 i = 0; i < size; i++)
+  if(code == NULL)
   {
-    printf("%02X ", code[i]);
-    if((i % 32) == 31)
-    {
-      printf("\n");
-    }
+    return 1;
   }
-  printf("\n");
+  TINY_OutputSymbolTable();
 
-  TINY_Run(code, size);
+  printf("\nTiny Basic Interpreter V1.0\n");
+  void *instance = TINY_Create(num_vars);
+  TINY_SetVar(instance, 0, 0); // TODO: Use real variable address
+  TINY_SetVar(instance, 1, 16);
+  TINY_Run(instance, code, size);
+  TINY_Destroy(instance);
+  //TINY_DumpCode(IXX_U8 *code, IXX_U16 size);
 
   printf("Ready.\n");
   return 0;

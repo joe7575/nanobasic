@@ -1,31 +1,95 @@
 #define k_TAG           0xBC
 #define k_VERSION       0x01
 
-#define k_END           0   // 00
-#define k_PRINTS        1   // 01 S T R I N G 00 (constant string)
-#define k_PRINTV        2   // 02 (print from stack)
-#define k_PRINTNL       3   // 03
-#define k_NUMBER        4   // 04 xx xx xx xx (push const value)
-#define k_BYTENUM       5   // 05 xx (push const value) 
-#define k_VAR           6   // 06 idx (push variable)
-#define k_LET           7   // 07 idx (pop variable)
-#define k_ADD           8   // 08 (add two values from stack)
-#define k_SUB           9   // 09 (sub ftwo values rom stack)
-#define k_MUL           10  // 0A (mul two values from stack)
-#define k_DIV           11  // 0B (div two values from stack)
-#define k_EQUAL         12  // 0C (compare two values from stack)
-#define k_NEQUAL        13  // 0D (compare two values from stack)
-#define k_LESS          14  // 0E (compare two values from stack)
-#define k_LESSEQUAL     15  // 0F (compare two values from stack)
-#define k_GREATER       16  // 10 (compare two values from stack)
-#define k_GREATEREQUAL  17  // 11 (compare two values from stack)
-#define k_GOTO          18  // 12 xx xx (16 bit programm address) 
-#define k_GOSUB         19  // 13 xx xx (16 bit programm address) 
-#define k_RETURN        20  // 14 (pop return address)
-#define k_IF            21  // 15 xx xx (pop val, END address)
-#define k_AND           22  // 16 (pop two values from stack)
-#define k_OR            23  // 17 (pop two values from stack)
-#define k_NOT           24  // 18 (pop one value from stack)
-#define k_STRING        25  // 19 xx xx (16 bit string address)
+#define k_STACK_SIZE    8
+
+// Opcode definitions
+enum {
+  k_END,                // End of programm
+  k_PRINTS,             // (print string from stack)
+  k_PRINTV,             // (print value from stack)
+  k_PRINTNL,            // (print new line)
+  k_PRINTT,             // (print tab)
+  k_STRING,             // xx xx (push 16 bit string address)
+  k_NUMBER,             // xx xx xx xx (push const value)
+  k_BYTENUM,            // xx (push const value)     
+  k_VAR,                // idx (push variable)
+  k_LET,                // idx (pop variable)
+  k_ADD,                // (add two values from stack)
+  k_SUB,                // (sub ftwo values rom stack)
+  k_MUL,                // (mul two values from stack)
+  k_DIV,                // (div two values from stack)
+  k_MOD,                // (mod two values from stack)
+  k_AND,                // (pop two values from stack)
+  k_OR,                 // (pop two values from stack)
+  k_NOT,                // (pop one value from stack)
+  k_EQUAL,              // (compare two values from stack)
+  k_NEQUAL,             // (compare two values from stack)
+  k_LESS,               // (compare two values from stack)     
+  k_LESSEQUAL,          // (compare two values from stack) 
+  k_GREATER,            // (compare two values from stack)      
+  k_GREATEREQUAL,       // (compare two values from stack)
+  k_GOTO,               // xx xx (16 bit programm address)
+  k_GOSUB,              // xx xx (16 bit programm address)
+  k_RETURN,             // (pop return address)
+  k_IF,                 // xx xx (pop val, END address)
+  k_FUNC,               // xx (function call)
+  k_VECTS1,             // xx (vector: set one byte)
+  k_VECTG1,             // xx (vector: get one byte)
+  k_VECTS2,             // xx (vector: set one short)
+  k_VECTG2,             // xx (vector: get one short)
+  k_VECTS4,             // xx (vector: set one long)
+  k_VECTG4,             // xx (vector: get one long)
+};
+
+// List of functions
+enum {
+  k_PEEK = 1,
+};
+
+#ifdef DEBUG
+char *Opcodes[] = {
+  "END",
+  "PRINTS",
+  "PRINTV",
+  "PRINTNL",
+  "PRINTT",
+  "STRING",
+  "NUMBER",
+  "BYTENUM",
+  "VAR",
+  "LET",
+  "ADD",
+  "SUB",
+  "MUL",
+  "DIV",
+  "MOD",
+  "AND",
+  "OR",
+  "NOT",
+  "EQUAL",
+  "NEQUAL",
+  "LESS",
+  "LESSEQUAL",
+  "GREATER",
+  "GREATEREQUAL",
+  "GOTO",
+  "GOSUB",
+  "RETURN",
+  "IF",
+  "FUNC",
+  "VECTS1",
+  "VECTG1",
+};
+#endif
+
+typedef struct {
+  IXX_U16 pc;   // Programm counter
+  IXX_U8  dsp;  // Data stack pointer
+  IXX_U8  csp;  // Call stack pointer
+  IXX_U32 datastack[k_STACK_SIZE];
+  IXX_U32 callstack[k_STACK_SIZE];
+  IXX_U32 variables[1];
+} t_VM;
 
 char *TINY_Scanner(char *pc8_in, char *pc8_out);
