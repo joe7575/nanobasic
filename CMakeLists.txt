@@ -7,6 +7,7 @@ add_executable(tinybasic
     ./TINYscanner.c
     ./TINYcompiler.c
     ./TINYruntime.c
+    ./TINYmemory.c
     ./main.c
     ./TINY.h
     ./TINYint.h

@@ -50,6 +50,7 @@
 
 #define DPUSH(x) vm->datastack[vm->dsp++ % k_STACK_SIZE] = x
 #define DPOP() vm->datastack[--vm->dsp % k_STACK_SIZE]
+#define DSTACK(x) vm->datastack[(vm->dsp + x) % k_STACK_SIZE]
 #define CPUSH(x) vm->callstack[vm->csp++ % k_STACK_SIZE] = x
 #define CPOP() vm->callstack[--vm->csp % k_STACK_SIZE]
 
@@ -114,7 +115,7 @@ IXX_U16 TINY_Run(void *pv_vm, IXX_U8* pu8_programm, IXX_U16 u16_len)
   while(1)
   {
 #ifdef DEBUG    
-    printf("%04X: %02X %s\n", pc, pu8_programm[pc], Opcodes[pu8_programm[pc]]);
+    printf("%04X: %02X %s\n", vm->pc, pu8_programm[vm->pc], Opcodes[pu8_programm[vm->pc]]);
 #endif
     switch (pu8_programm[vm->pc])
     {
@@ -265,6 +266,23 @@ IXX_U16 TINY_Run(void *pv_vm, IXX_U8* pu8_programm, IXX_U16 u16_len)
         break;
       case k_RETURN:
         vm->pc = (IXX_U16)CPOP();
+        break;
+      case k_NEXT:
+        // ID = ID + stack[-1]
+        // IF ID <= stack[-2] GOTO start
+        tmp1 = *(IXX_U16*)&pu8_programm[vm->pc + 1];
+        var = pu8_programm[vm->pc + 3];
+        vm->variables[var] = vm->variables[var] + DSTACK(-1);
+        if(vm->variables[var] <= DSTACK(-2))
+        {
+          vm->pc = tmp1;
+        }
+        else
+        {
+          vm->pc += 4;
+          DPOP();  // remove step value
+          DPOP();  // remove end condition
+        }
         break;
       case k_IF:
         if(DPOP() == 0)

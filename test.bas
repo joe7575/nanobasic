@@ -6,6 +6,7 @@ if x < 10 then goto loop
 let Bvar = x * 10 + 11
 print "B = "; Bvar
 gosub foo
+gosub foo2
 print
 print "END", x
 end
@@ -30,3 +31,9 @@ print rx[2,2], tx[2,2]
 print rx[4,4], tx[4,4]
 return
 
+
+foo2:
+for i = 0 to 10
+  print i,
+next i
+return

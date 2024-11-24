@@ -13,12 +13,13 @@
 #define MAX_NUM_SYM     256
 #define MAX_SYM_LEN     9
 #define MAX_CODE_LEN    1024
+#define MAX_FOR_LOOPS   8
 
 #define MIN(a,b)        ((a) < (b) ? (a) : (b))
 
 // Token types
 enum {
-  LET = 128, IF, THEN, PRINT, GOTO, GOSUB, RETURN, END, REM, AND, OR, NOT,
+  LET = 128, FOR, TO, STEP, NEXT, IF, THEN, PRINT, GOTO, GOSUB, RETURN, END, REM, AND, OR, NOT,
   NUM, STR, ID, SID, EQ, NQ, LE, LQ, GR, GQ,
   PEEK, VECT,
   LABEL,
@@ -26,7 +27,7 @@ enum {
 
 // Keywords
 static char *Keywords[] = {
-  "let", "if", "then", "print", "goto", "gosub", "return", "end", "rem", "and", "or", "not",
+  "let", "for", "to", "step", "next", "if", "then", "print", "goto", "gosub", "return", "end", "rem", "and", "or", "not",
   "number", "string", "variable", "string variable", "=", "<>", "<", "<=", ">", ">=",
   "peek", "vector",
   "label",
@@ -47,12 +48,14 @@ static IXX_U16 u16_Linenum = 0;
 static IXX_U16 u16_ErrCount = 0;
 static IXX_U16 u16_SymIdx = 0;
 static IXX_U16 u16_StartOfVars = 0;
+static IXX_U16 au16_ForLoopStartAddr[MAX_FOR_LOOPS] = {0};
 static char ac8_Line[MAX_STR_LEN];
 static char ac8_Buff[MAX_STR_LEN];
 static char *pc8_pos = NULL;
 static char *pc8_next = NULL;
 static IXX_U32 u32_Value;
 static IXX_U8 u8_NextTok;
+static IXX_U8 u8_ForLoopIdx = 0;
 
 static void compile(FILE *fp);
 static IXX_U8 next_token(void);
@@ -62,6 +65,8 @@ static void match(IXX_U8 expected);
 static void label(void);
 static void compile_line(void);
 static void compile_stmt(void);
+static void compile_for(void);
+static void compile_next(void);
 static void compile_if(void);
 static void compile_goto(void);
 static void compile_gosub(void);
@@ -100,6 +105,10 @@ IXX_U8 *TINY_Compiler(char *filename, IXX_U16 *pu16_len, IXX_U8 *pu8_num_vars)
 {
   // Add keywords
   sym_add("let", 0, LET);
+  sym_add("for", 0, FOR);
+  sym_add("to", 0, TO);
+  sym_add("step", 0, STEP);
+  sym_add("next", 0, NEXT);
   sym_add("if", 0, IF);
   sym_add("then", 0, THEN);
   sym_add("print", 0, PRINT);
@@ -171,8 +180,8 @@ static void compile(FILE *fp)
   u16_Pc = 0;
   au8_Code[u16_Pc++] = k_TAG;
   au8_Code[u16_Pc++] = k_VERSION;
-  sym_add("rx", u8_CurrVarIdx, VECT);
-  sym_add("tx", u8_CurrVarIdx, VECT);
+  //sym_add("rx", u8_CurrVarIdx, VECT);
+  //sym_add("tx", u8_CurrVarIdx, VECT);
 
   fseek(fp, 0, SEEK_SET);
   while(fgets(ac8_Line, MAX_STR_LEN, fp) != NULL)
@@ -319,6 +328,7 @@ static void compile_stmt(void)
   IXX_U8 tok = next();
   switch(tok)
   {
+    case FOR: compile_for(); break;
     case IF: compile_if(); break;
     case LET: compile_var(); break;
     case REM: remark(); break;
@@ -326,9 +336,67 @@ static void compile_stmt(void)
     case GOSUB: compile_gosub(); break;
     case RETURN: compile_return(); break;
     case PRINT: compile_print(); break;
+    case NEXT: compile_next(); break;
     case END: compile_end(); break;
     default: error("unknown statement '%u'", tok); break;
   }
+}
+
+// FOR ID '=' <Expression1> TO <Expression2> [STEP <Expression3>]
+// <Statement>...
+// NEXT [ID]
+//
+// ID1 = <Expression1>            k_NUMBER number / k_VAR var (push), k_LET var (pop)
+// ID2 = <Expression2>            k_NUMBER number / k_VAR var (push)
+// ID3 = <Expression3> or 1       k_NUMBER number / k_VAR var (push)
+// start:
+static void compile_for(void)
+{
+  IXX_U8 tok;
+  match(ID);
+  IXX_U16 idx = u16_SymIdx;
+  match('=');
+  compile_expression();
+  au8_Code[u16_Pc++] = k_LET;
+  au8_Code[u16_Pc++] = as_Symbol[idx].value;
+  match(TO);
+  compile_expression();
+  tok = lookahead();
+  if(tok == STEP)
+  {
+    match(STEP);
+    compile_expression();
+  }
+  else
+  {
+    au8_Code[u16_Pc++] = k_BYTENUM;
+    au8_Code[u16_Pc++] = 1;
+  }
+  // Save start address
+  if(u8_ForLoopIdx >= MAX_FOR_LOOPS)
+  {
+    error("too many nested 'for' loops");
+    return;
+  }
+  au16_ForLoopStartAddr[u8_ForLoopIdx++] = u16_Pc;
+}
+
+// ID =  ID + Step ID3            k_NEXT start var
+// ID <= ID2 GOTO start           
+static void compile_next(void)
+{
+  match(ID);
+  IXX_U16 idx = u16_SymIdx;
+  if(u8_ForLoopIdx == 0)
+  {
+    error("'next' without 'for'");
+    return;
+  }
+  IXX_U16 addr = au16_ForLoopStartAddr[--u8_ForLoopIdx];
+  au8_Code[u16_Pc++] = k_NEXT;
+  au8_Code[u16_Pc++] = addr & 0xFF;
+  au8_Code[u16_Pc++] = (addr >> 8) & 0xFF;
+  au8_Code[u16_Pc++] = as_Symbol[idx].value;
 }
 
 static void compile_if(void)

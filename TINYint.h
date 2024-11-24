@@ -29,9 +29,10 @@ enum {
   k_LESSEQUAL,          // (compare two values from stack) 
   k_GREATER,            // (compare two values from stack)      
   k_GREATEREQUAL,       // (compare two values from stack)
-  k_GOTO,               // xx xx (16 bit programm address)
-  k_GOSUB,              // xx xx (16 bit programm address)
+  k_GOTO,               // (16 bit programm address)
+  k_GOSUB,              // (16 bit programm address)
   k_RETURN,             // (pop return address)
+  k_NEXT,               // (16 bit programm address), (variable)
   k_IF,                 // xx xx (pop val, END address)
   k_FUNC,               // xx (function call)
   k_VECTS1,             // xx (vector: set one byte)
@@ -76,6 +77,7 @@ char *Opcodes[] = {
   "GOTO",
   "GOSUB",
   "RETURN",
+  "NEXT",
   "IF",
   "FUNC",
   "VECTS1",
