@@ -1,3 +1,24 @@
+/*
+
+Copyright 2024 Joachim Stolberg
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the “Software”), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+*/
+
 #define k_TAG           0xBC
 #define k_VERSION       0x01
 
@@ -86,12 +107,12 @@ char *Opcodes[] = {
 #endif
 
 typedef struct {
-  IXX_U16 pc;   // Programm counter
-  IXX_U8  dsp;  // Data stack pointer
-  IXX_U8  csp;  // Call stack pointer
-  IXX_U32 datastack[k_STACK_SIZE];
-  IXX_U32 callstack[k_STACK_SIZE];
-  IXX_U32 variables[1];
+  uint16_t pc;   // Programm counter
+  uint8_t  dsp;  // Data stack pointer
+  uint8_t  csp;  // Call stack pointer
+  uint32_t datastack[k_STACK_SIZE];
+  uint32_t callstack[k_STACK_SIZE];
+  uint32_t variables[1];
 } t_VM;
 
-char *TINY_Scanner(char *pc8_in, char *pc8_out);
+char *jbi_scanner(char *p_in, char *p_out);

@@ -1,11 +1,32 @@
+/*
+
+Copyright 2024 Joachim Stolberg
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the “Software”), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+*/
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <assert.h>
 #include <stdarg.h>
-#include "TINY.h"
-#include "TINYint.h"
+#include "jbi.h"
+#include "jbi_int.h"
 
 #define k_BLOCK_SIZE    (32)    // Must be a multiple of 4 (real size is MIN_BLOCK_SIZE - 1)
 #define k_FREE_TAG      (0)     // Also used for number of blocks
@@ -21,7 +42,7 @@ typedef struct {
     buff_t buff[0];
 } mem_t;
 
-void *TINY_MemoryCreate(uint16_t num_blocks) {
+void *jbi_mem_create(uint16_t num_blocks) {
     uint16_t size = sizeof(mem_t) + num_blocks * sizeof(buff_t);
     mem_t *p_mem = (mem_t*)malloc(size);
 
@@ -36,7 +57,7 @@ void *TINY_MemoryCreate(uint16_t num_blocks) {
     return p_mem;
 }
 
-void TINY_MemoryDump(void *pv_mem) {
+void jbi_mem_dump(void *pv_mem) {
     mem_t *p_mem = (mem_t*)pv_mem;
     uint8_t num_blocks = 0;
 
@@ -59,12 +80,12 @@ void TINY_MemoryDump(void *pv_mem) {
     }
 }
 
-void TINY_MemoryDestroy(void *pv_mem)
+void jbi_mem_destroy(void *pv_mem)
 {
     free(pv_mem);
 }
 
-void *TINY_MemoryAlloc(void *pv_mem, uint16_t bytes) {
+void *jbi_mem_alloc(void *pv_mem, uint16_t bytes) {
     mem_t *p_mem = (mem_t*)pv_mem;
     uint16_t num_blocks = bytes / (k_BLOCK_SIZE - 1) + (bytes % (k_BLOCK_SIZE - 1) ? 1 : 0);
     uint16_t start = 0;
@@ -96,7 +117,7 @@ void *TINY_MemoryAlloc(void *pv_mem, uint16_t bytes) {
     return NULL;
 }
 
-void TINY_MemoryFree(void *pv_mem, void *pv_ptr)
+void jbi_mem_free(void *pv_mem, void *pv_ptr)
 {
     mem_t *p_mem = (mem_t*)pv_mem;
     if((pv_ptr >= (void*)&p_mem->buff[0]) &&
@@ -109,7 +130,7 @@ void TINY_MemoryFree(void *pv_mem, void *pv_ptr)
     }
 }
 
-void *TINY_MemoryRealloc(void *pv_mem, void *pv_ptr, uint16_t bytes) {
+void *jbi_MemoryRealloc(void *pv_mem, void *pv_ptr, uint16_t bytes) {
     mem_t *p_mem = (mem_t*)pv_mem;
     uint8_t *p_buff = (uint8_t*)pv_ptr;
     uint8_t num_blocks = p_buff[-1];
@@ -123,11 +144,11 @@ void *TINY_MemoryRealloc(void *pv_mem, void *pv_ptr, uint16_t bytes) {
         }
         return pv_ptr;
     }
-    uint8_t *p_new = TINY_MemoryAlloc(pv_mem, bytes);
+    uint8_t *p_new = jbi_mem_alloc(pv_mem, bytes);
     if(p_new == NULL) {
         return NULL;
     }
     memcpy(p_new, pv_ptr, (num_blocks - 1) * k_BLOCK_SIZE);
-    TINY_MemoryFree(pv_mem, pv_ptr);
+    jbi_mem_free(pv_mem, pv_ptr);
     return p_new;
 }

@@ -1,10 +1,31 @@
+/*
+
+Copyright 2024 Joachim Stolberg
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the “Software”), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+*/
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <assert.h>
-#include "TINY.h"
-#include "TINYint.h"
+#include "jbi.h"
+#include "jbi_int.h"
 
 #define is_alpha(x)   (Ascii[x & 0x7F] & 0x01)
 #define is_digit(x)   (Ascii[x & 0x7F] & 0x02)
@@ -25,95 +46,95 @@ static char Ascii[] = {
   0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x70 - 0x7F
 };
 
-char *TINY_Scanner(char *pc8_in, char *pc8_out)
+char *jbi_scanner(char *p_in, char *p_out)
 {
   char c8;
 
-  while(is_wspace(*pc8_in))
+  while(is_wspace(*p_in))
   {
-    pc8_in++;
+    p_in++;
   }
 
-  while((c8 = *pc8_in) != 0)
+  while((c8 = *p_in) != 0)
   {
     if(is_alpha(c8))
     {
-      *pc8_out++ = c8;
-      pc8_in++;
-      while(is_alnum(*pc8_in))
+      *p_out++ = c8;
+      p_in++;
+      while(is_alnum(*p_in))
       {
-        *pc8_out++ = *pc8_in++;
+        *p_out++ = *p_in++;
       }
-      if(*pc8_in == '$') // String variable
+      if(*p_in == '$') // String variable
       {
-        *pc8_out++ = *pc8_in++;
+        *p_out++ = *p_in++;
       }
-      *pc8_out++ = '\0';
-      return pc8_in;
+      *p_out++ = '\0';
+      return p_in;
     }
 
     if(is_digit(c8))
     {
-      *pc8_out++ = c8;
-      pc8_in++;
-      while(is_digit(*pc8_in))
+      *p_out++ = c8;
+      p_in++;
+      while(is_digit(*p_in))
       {
-        *pc8_out++ = *pc8_in++;
+        *p_out++ = *p_in++;
       }
-      *pc8_out++ = '\0';
-      return pc8_in;
+      *p_out++ = '\0';
+      return p_in;
     }
 
     if(is_comp(c8))
     {
-      *pc8_out++ = c8;
-      pc8_in++;
-      while(is_comp(*pc8_in))
+      *p_out++ = c8;
+      p_in++;
+      while(is_comp(*p_in))
       {
-        *pc8_out++ = *pc8_in++;
+        *p_out++ = *p_in++;
       }
-      *pc8_out++ = '\0';
-      return pc8_in;
+      *p_out++ = '\0';
+      return p_in;
     }
 
     if(is_arith(c8))
     {
-      *pc8_out++ = c8;
-      pc8_in++;
-      while(is_arith(*pc8_in))
+      *p_out++ = c8;
+      p_in++;
+      while(is_arith(*p_in))
       {
-        *pc8_out++ = *pc8_in++;
+        *p_out++ = *p_in++;
       }
-      *pc8_out++ = '\0';
-      return pc8_in;
+      *p_out++ = '\0';
+      return p_in;
     }
 
     if(c8 == '\"')
     {
-      *pc8_out++ = c8;
-      pc8_in++;
-      while((c8 = *pc8_in) != '\"')
+      *p_out++ = c8;
+      p_in++;
+      while((c8 = *p_in) != '\"')
       {
-        *pc8_out++ = c8;
-        pc8_in++;
+        *p_out++ = c8;
+        p_in++;
       }
-      *pc8_out++ = c8;
-      pc8_in++;
-      *pc8_out++ = '\0';
-      return pc8_in;
+      *p_out++ = c8;
+      p_in++;
+      *p_out++ = '\0';
+      return p_in;
     }
 
     // Single character
-    *pc8_out++ = c8;
-    pc8_in++;
-    *pc8_out++ = '\0';
-    return pc8_in;
+    *p_out++ = c8;
+    p_in++;
+    *p_out++ = '\0';
+    return p_in;
   }
 
   // End of string
   if((c8 == '\n') || (c8 == '\r') || (c8 == '\0'))
   {
-    *pc8_out = '\0';
+    *p_out = '\0';
     return NULL;
   }
 }
@@ -127,7 +148,7 @@ int main(void)
 
   while(*p != 0)
   {
-    p = TINY_Scanner(p,t);
+    p = jbi_scanner(p,t);
     printf("%s\n",t);
   }
 
@@ -135,7 +156,7 @@ int main(void)
   p = s;
   while(*p != 0)
   {
-    p = TINY_Scanner(p,t);
+    p = jbi_scanner(p,t);
     printf("%s\n",t);
   }
   
@@ -143,7 +164,7 @@ int main(void)
   p = s;
   while(*p != 0)
   {
-    p = TINY_Scanner(p,t);
+    p = jbi_scanner(p,t);
     printf("%s\n",t);
   }
 

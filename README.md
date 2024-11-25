@@ -1,29 +1,5 @@
-tinybasic
-=========
+Joes Basic
+==========
 
-A tiny BASIC parser, interpreter and compiler. 
+A small BASIC parser, interpreter and compiler in C.
 
-##Usage
-
-###REPL
-``` python
-python tinybasic.py
-```
-
-###Interpret file
-```
-python tinybasic.py [path]
-```
-
-###Parse file
-```
-python tinybasic.py [path] [-p, --parse]
-```
-
-###Compile file to C
-```
-python tinybasic.py [path] [-c, --compile]
-```
-
-##Tools 
-Peglet: https://github.com/darius/peglet
