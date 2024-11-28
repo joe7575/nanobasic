@@ -9,7 +9,7 @@ add_executable(joesbasic
     ./jbi_runtime.c
     ./jbi_memory.c
     ./main.c
-    ./bci.h
+    ./jbi.h
     ./jbi_int.h
 )
 

@@ -35,139 +35,120 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define is_arith(x)   (Ascii[x & 0x7F] & 0x10)
 
 static char Ascii[] = {
-//  0     1     2     3     4     5     6     7     8     9     A     B     C     D     E     F  
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, // 0x00 - 0x0F
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x04, 0x00, 0x00, // 0x10 - 0x1F
-  0x04, 0x10, 0x00, 0x00, 0x00, 0x10, 0x10, 0x00, 0x00, 0x00, 0x10, 0x10, 0x00, 0x10, 0x00, 0x10, // 0x20 - 0x2F
-  0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x00, 0x00, 0x08, 0x08, 0x08, 0x00, // 0x30 - 0x3F
-  0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, // 0x40 - 0x4F
-  0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, // 0x50 - 0x5F
-  0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, // 0x60 - 0x6F
-  0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x70 - 0x7F
+    //0     1     2     3     4     5     6     7     8     9     A     B     C     D     E     F  
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, // 0x00 - 0x0F
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x04, 0x00, 0x00, // 0x10 - 0x1F
+    0x04, 0x10, 0x00, 0x00, 0x00, 0x10, 0x10, 0x00, 0x00, 0x00, 0x10, 0x10, 0x00, 0x10, 0x00, 0x10, // 0x20 - 0x2F
+    0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x00, 0x00, 0x08, 0x08, 0x08, 0x00, // 0x30 - 0x3F
+    0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, // 0x40 - 0x4F
+    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, // 0x50 - 0x5F
+    0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, // 0x60 - 0x6F
+    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x70 - 0x7F
 };
 
-char *jbi_scanner(char *p_in, char *p_out)
-{
-  char c8;
+char *jbi_scanner(char *p_in, char *p_out) {
+    char c8;
 
-  while(is_wspace(*p_in))
-  {
-    p_in++;
-  }
-
-  while((c8 = *p_in) != 0)
-  {
-    if(is_alpha(c8))
-    {
-      *p_out++ = c8;
+    while(is_wspace(*p_in)) {
       p_in++;
-      while(is_alnum(*p_in))
-      {
-        *p_out++ = *p_in++;
-      }
-      if(*p_in == '$') // String variable
-      {
-        *p_out++ = *p_in++;
-      }
-      *p_out++ = '\0';
-      return p_in;
     }
 
-    if(is_digit(c8))
-    {
-      *p_out++ = c8;
-      p_in++;
-      while(is_digit(*p_in))
-      {
-        *p_out++ = *p_in++;
-      }
-      *p_out++ = '\0';
-      return p_in;
-    }
+    while((c8 = *p_in) != 0) {
+        if(is_alpha(c8)) {
+            *p_out++ = c8;
+            p_in++;
+            while(is_alnum(*p_in)) {
+                *p_out++ = *p_in++;
+            }
+            if(*p_in == '$') { // String variable
+                *p_out++ = *p_in++;
+            }
+            *p_out++ = '\0';
+            return p_in;
+        }
 
-    if(is_comp(c8))
-    {
-      *p_out++ = c8;
-      p_in++;
-      while(is_comp(*p_in))
-      {
-        *p_out++ = *p_in++;
-      }
-      *p_out++ = '\0';
-      return p_in;
-    }
+        if(is_digit(c8)) {
+            *p_out++ = c8;
+            p_in++;
+            while(is_digit(*p_in)) {
+                *p_out++ = *p_in++;
+            }
+            *p_out++ = '\0';
+            return p_in;
+        }
 
-    if(is_arith(c8))
-    {
-      *p_out++ = c8;
-      p_in++;
-      while(is_arith(*p_in))
-      {
-        *p_out++ = *p_in++;
-      }
-      *p_out++ = '\0';
-      return p_in;
-    }
+        if(is_comp(c8)) {
+            *p_out++ = c8;
+            p_in++;
+            while(is_comp(*p_in)) {
+                *p_out++ = *p_in++;
+            }
+            *p_out++ = '\0';
+            return p_in;
+        }
 
-    if(c8 == '\"')
-    {
-      *p_out++ = c8;
-      p_in++;
-      while((c8 = *p_in) != '\"')
-      {
+        if(is_arith(c8)) {
+            *p_out++ = c8;
+            p_in++;
+            while(is_arith(*p_in)) {
+                *p_out++ = *p_in++;
+            }
+            *p_out++ = '\0';
+            return p_in;
+        }
+
+        if(c8 == '\"') {
+            *p_out++ = c8;
+            p_in++;
+            while((c8 = *p_in) != '\"') {
+                *p_out++ = c8;
+                p_in++;
+            }
+            *p_out++ = c8;
+            p_in++;
+            *p_out++ = '\0';
+            return p_in;
+        }
+
+        // Single character
         *p_out++ = c8;
         p_in++;
-      }
-      *p_out++ = c8;
-      p_in++;
-      *p_out++ = '\0';
-      return p_in;
+        *p_out++ = '\0';
+        return p_in;
     }
 
-    // Single character
-    *p_out++ = c8;
-    p_in++;
-    *p_out++ = '\0';
-    return p_in;
-  }
-
-  // End of string
-  if((c8 == '\n') || (c8 == '\r') || (c8 == '\0'))
-  {
-    *p_out = '\0';
-    return NULL;
-  }
+    // End of string
+    if((c8 == '\n') || (c8 == '\r') || (c8 == '\0')) {
+        *p_out = '\0';
+        return NULL;
+    }
 }
 
 #ifdef TEST
-int main(void)
-{
-  char s[] = "LET A = 1234 * 2 - 1";
-  char t[80];
-  char *p = s;
+int main(void) {
+    char s[] = "LET A = 1234 * 2 - 1";
+    char t[80];
+    char *p = s;
 
-  while(*p != 0)
-  {
-    p = jbi_scanner(p,t);
-    printf("%s\n",t);
-  }
+    while(*p != 0) {
+        p = jbi_scanner(p,t);
+        printf("%s\n",t);
+    }
 
-  strcpy(s,"\"Hello World\"");
-  p = s;
-  while(*p != 0)
-  {
-    p = jbi_scanner(p,t);
-    printf("%s\n",t);
-  }
-  
-  strcpy(s,"A=1234*2-1");
-  p = s;
-  while(*p != 0)
-  {
-    p = jbi_scanner(p,t);
-    printf("%s\n",t);
-  }
+    strcpy(s,"\"Hello World\"");
+    p = s;
+    while(*p != 0) {
+        p = jbi_scanner(p,t);
+        printf("%s\n",t);
+    }
+    
+    strcpy(s,"A=1234*2-1");
+    p = s;
+    while(*p != 0) {
+        p = jbi_scanner(p,t);
+        printf("%s\n",t);
+    }
 
-  return 0;
+    return 0;
 }
 #endif

@@ -24,64 +24,106 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <stdlib.h>
 #include <ctype.h>
 #include <assert.h>
+#include <time.h>
+#include <errno.h>    
 #include "jbi.h"
 
-void test_memory(void)
+/* msleep(): Sleep for the requested number of milliseconds. */
+int msleep(uint32_t msec)
 {
-  uint8_t *p1, *p2, *p3, *p4;
-  void *pv_mem = jbi_mem_create(64);
-  jbi_mem_dump(pv_mem);
-  assert((p1 = jbi_mem_alloc(pv_mem, 30)) != NULL);
-  assert((p2 = jbi_mem_alloc(pv_mem, 31)) != NULL);
-  assert((p3 = jbi_mem_alloc(pv_mem, 32)) != NULL);
-  assert((p4 = jbi_mem_alloc(pv_mem, 128)) != NULL);
+    struct timespec ts;
+    int res;
 
-  memset(p1, 0x11, 30);
-  memset(p2, 0x22, 31);
-  memset(p3, 0x33, 32);
-  memset(p4, 0x44, 128);
+    ts.tv_sec = msec / 1000;
+    ts.tv_nsec = (msec % 1000) * 1000000;
 
-  jbi_mem_dump(pv_mem);
-  jbi_mem_free(pv_mem, p2);
-  jbi_mem_free(pv_mem, p4);
-  jbi_mem_dump(pv_mem);
-  jbi_mem_free(pv_mem, p1);
-  jbi_mem_free(pv_mem, p3);
-  jbi_mem_dump(pv_mem);
-  jbi_mem_destroy(pv_mem);
+    do {
+        res = nanosleep(&ts, &ts);
+    } while (res && errno == EINTR);
+
+    return res;
 }
 
-int main(int argc, char* argv[])
-{
-  uint16_t size;
-  uint8_t num_vars;
-  
-  //test_memory();
+void test_memory(void) {
+    uint8_t *p1, *p2, *p3, *p4;
+    void *pv_mem = jbi_mem_create(64);
 
-  if (argc != 2)
-  {
-    printf("Usage: %s <programm>\n", argv[0]);
-    return 1;
-  }
-  printf("Joes Basic Compiler V1.0\n");
+    jbi_mem_dump(pv_mem);
+    assert((p1 = jbi_mem_alloc(pv_mem, 30)) != NULL);
+    assert((p2 = jbi_mem_alloc(pv_mem, 31)) != NULL);
+    assert((p3 = jbi_mem_alloc(pv_mem, 32)) != NULL);
+    assert((p4 = jbi_mem_alloc(pv_mem, 128)) != NULL);
 
-  uint8_t *code = jbi_compiler("../temp.bas", &size, &num_vars);
+    memset(p1, 0x11, 30);
+    memset(p2, 0x22, 31);
+    memset(p3, 0x33, 32);
+    memset(p4, 0x44, 128);
 
-  if(code == NULL)
-  {
-    return 1;
-  }
-  jbi_output_symbol_table();
+    jbi_mem_dump(pv_mem);
+    jbi_mem_free(pv_mem, p2);
+    jbi_mem_free(pv_mem, p4);
+    jbi_mem_dump(pv_mem);
+    jbi_mem_free(pv_mem, p1);
+    jbi_mem_free(pv_mem, p3);
+    jbi_mem_dump(pv_mem);
+    jbi_mem_destroy(pv_mem);
+}
 
-  printf("\nJoes Basic Interpreter V1.0\n");
-  void *instance = jbi_create(num_vars);
-  //jbi_SetVar(instance, 0, 0); // TODO: Use real variable address
-  //jbi_SetVar(instance, 1, 16);
-  jbi_dump_code(code, size);
-  
-  jbi_run(instance, code, size, 10000);
-  jbi_destroy(instance);
+int main(int argc, char* argv[]) {
+    uint16_t size;
+    uint8_t num_vars;
+    uint16_t res = JBI_BUSY;
+    uint32_t cycles = 0;
+    uint8_t evt1, evt2, buf1, buf2;
+    uint32_t *p1, *p2;
+    uint8_t  *p3, *p4;
+    
+    //test_memory();
 
-  printf("Ready.\n");
-  return 0;
+    if (argc != 2) {
+        printf("Usage: %s <programm>\n", argv[0]);
+        return 1;
+    }
+    printf("Joes Basic Compiler V1.0\n");
+
+    jbi_init();
+    evt1 = jbi_add_variable("evt1");
+    evt2 = jbi_add_variable("evt2");
+    buf1 = jbi_add_buffer("buf1", 0);
+    buf2 = jbi_add_buffer("buf2", 1);
+    uint8_t *code = jbi_compiler("../test.bas", &size, &num_vars);
+
+    if(code == NULL) {
+        return 1;
+    }
+    jbi_output_symbol_table();
+
+    printf("\nJoes Basic Interpreter V1.0\n");
+    void *instance = jbi_create(num_vars, code);
+    jbi_dump_code(code, size);
+    p1 = jbi_get_variable_address(instance, evt1);
+    p2 = jbi_get_variable_address(instance, evt2);
+    p3 = jbi_get_buffer_address(instance, buf1);
+    p4 = jbi_get_buffer_address(instance, buf2);
+    
+    while(res >= JBI_BUSY) {
+        // A simple for loop "for i = 1 to 100: print i: next i" 
+        // needs ~500 ticks or 1 second (50 cycles per 100 ms)
+        res = jbi_run(instance, code, size, 50);
+        cycles += 50;
+        msleep(100);
+        if(res == JBI_SNDCMD) {
+            uint32_t num = jbi_pull_variable(instance);
+            printf("Send command to %u: %02X %02X %02X %02X\n", num, p3[0], p3[1], p3[2], p3[3]);
+        } else if(res == JBI_SNDEVT) {
+            uint32_t evt = jbi_pull_variable(instance);
+            uint32_t num = jbi_pull_variable(instance);
+            printf("Send event to %u: %u\n", num, evt);
+        }
+    }
+    jbi_destroy(instance);
+
+    printf("Cycles: %u\n", cycles);
+    printf("Ready.\n");
+    return 0;
 }

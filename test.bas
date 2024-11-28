@@ -16,19 +16,20 @@ foo:
 print "foo", y, y<12, not y>12
 let A$ = "Welt"
 print "Hallo", A$
-print "peek(1234) = "; peek(1234)
-let rx[0] = 1
-let rx[1,1] = 2
-let tx[0] = 17
-let tx[1,1] = 18
-let rx[2,2] = 3 + 4 * 256
-let tx[2,2] = 19 + 20 * 256
-let rx[4,4] = 5 + 6 * 256 + 7 * 65536 + 8 * 16777216
-let tx[4,4] = 21 + 22 * 256 + 23 * 65536 + 24 * 16777216
+let buf1[0] = 1
+let buf1[1,1] = 2
+let buf2[0] = 17
+let buf2[1,1] = 18
+let buf1[2,2] = 3 + 4 * 256
+let buf2[2,2] = 19 + 20 * 256
+let buf1[4,4] = 5 + 6 * 256 + 7 * 65536 + 8 * 16777216
+let buf2[4,4] = 21 + 22 * 256 + 23 * 65536 + 24 * 16777216
+sndcmd(12345)
+sndevt(666777, 0)
 
-print rx[0], rx[1], tx[0], tx[1]
-print rx[2,2], tx[2,2]
-print rx[4,4], tx[4,4]
+print buf1[0], buf1[1], buf2[0], buf2[1]
+print buf1[2,2], buf2[2,2]
+print buf1[4,4], buf2[4,4]
 return
 
 
