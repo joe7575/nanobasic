@@ -28,6 +28,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <errno.h>    
 #include "jbi.h"
 
+extern void test_memory(void *p_vm);
+
 /* msleep(): Sleep for the requested number of milliseconds. */
 int msleep(uint32_t msec)
 {
@@ -44,30 +46,6 @@ int msleep(uint32_t msec)
     return res;
 }
 
-void test_memory(void) {
-    uint8_t *p1, *p2, *p3, *p4;
-    void *pv_mem = jbi_mem_create(64);
-
-    jbi_mem_dump(pv_mem);
-    assert((p1 = jbi_mem_alloc(pv_mem, 30)) != NULL);
-    assert((p2 = jbi_mem_alloc(pv_mem, 31)) != NULL);
-    assert((p3 = jbi_mem_alloc(pv_mem, 32)) != NULL);
-    assert((p4 = jbi_mem_alloc(pv_mem, 128)) != NULL);
-
-    memset(p1, 0x11, 30);
-    memset(p2, 0x22, 31);
-    memset(p3, 0x33, 32);
-    memset(p4, 0x44, 128);
-
-    jbi_mem_dump(pv_mem);
-    jbi_mem_free(pv_mem, p2);
-    jbi_mem_free(pv_mem, p4);
-    jbi_mem_dump(pv_mem);
-    jbi_mem_free(pv_mem, p1);
-    jbi_mem_free(pv_mem, p3);
-    jbi_mem_dump(pv_mem);
-    jbi_mem_destroy(pv_mem);
-}
 
 int main(int argc, char* argv[]) {
     uint16_t size;
@@ -78,8 +56,6 @@ int main(int argc, char* argv[]) {
     uint32_t *p1, *p2;
     uint8_t  *p3, *p4;
     
-    //test_memory();
-
     if (argc != 2) {
         printf("Usage: %s <programm>\n", argv[0]);
         return 1;
@@ -100,6 +76,8 @@ int main(int argc, char* argv[]) {
 
     printf("\nJoes Basic Interpreter V1.0\n");
     void *instance = jbi_create(num_vars, code);
+    // test_memory(instance);
+    // return 0;
     jbi_dump_code(code, size);
     p1 = jbi_get_variable_address(instance, evt1);
     p2 = jbi_get_variable_address(instance, evt2);
@@ -112,10 +90,10 @@ int main(int argc, char* argv[]) {
         res = jbi_run(instance, code, size, 50);
         cycles += 50;
         msleep(100);
-        if(res == JBI_SNDCMD) {
+        if(res == JBI_CMD) {
             uint32_t num = jbi_pull_variable(instance);
             printf("Send command to %u: %02X %02X %02X %02X\n", num, p3[0], p3[1], p3[2], p3[3]);
-        } else if(res == JBI_SNDEVT) {
+        } else if(res == JBI_EVENT) {
             uint32_t evt = jbi_pull_variable(instance);
             uint32_t num = jbi_pull_variable(instance);
             printf("Send event to %u: %u\n", num, evt);

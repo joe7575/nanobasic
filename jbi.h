@@ -26,8 +26,8 @@ enum {
   JBI_END = 0,  // programm end reached
   JBI_ERROR,    // error in programm
   JBI_BUSY,     // programm still willing to run
-  JBI_SNDCMD,   // send command (buffer)
-  JBI_SNDEVT,   // send event (variable)
+  JBI_CMD,   // send command (buffer)
+  JBI_EVENT,   // send event (variable)
 };
 
 void jbi_init(void);
@@ -42,10 +42,3 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
 void jbi_destroy(void * pv_vm);
 void jbi_dump_code(uint8_t *code, uint16_t size);
 void jbi_output_symbol_table(void);
-
-void *jbi_mem_create(uint16_t num_blocks);
-void  jbi_mem_dump(void *pv_mem);
-void  jbi_mem_destroy(void *pv_mem);
-void *jbi_mem_alloc(void *pv_mem, uint16_t bytes);
-void  jbi_mem_free(void *pv_mem, void *pv_ptr);
-void *jbi_mem_realloc(void *pv_mem, void *pv_ptr, uint16_t bytes);

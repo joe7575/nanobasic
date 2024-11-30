@@ -41,17 +41,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 // Token types
 enum {
     LET = 128, FOR, TO, STEP, NEXT, IF, THEN, PRINT, GOTO, GOSUB, RETURN, END, REM, AND, OR, NOT,
-    NUM, STR, ID, SID, EQ, NQ, LE, LQ, GR, GQ,
-    SNDCMD, SNDEVT, BUFF,
+    NUM,  // 1234
+    STR,  // "Hello"
+    ID,   // var1
+    SID,  // A$
+    EQ, NQ, LE, LQ, GR, GQ,
+    CMD, EVENT, BUFF,
     LABEL,
+    LEFTS, RIGHTS, MIDS, LEN, VAL, STRS, SPC
 };
 
 // Keywords
 static char *Keywords[] = {
     "let", "for", "to", "step", "next", "if", "then", "print", "goto", "gosub", "return", "end", "rem", "and", "or", "not",
     "number", "string", "variable", "string variable", "=", "<>", "<", "<=", ">", ">=",
-    "sndcmd", "sndevt", "buffer",
+    "cmd", "event", "buffer",
     "label",
+    "left$", "right$", "mid$", "len", "val", "str$", "spc"
 };
 
 // Symbol table
@@ -98,16 +104,16 @@ static void remark(void);
 static void compile_comment(void);
 static void compile_print(void);
 static void compile_string(void);
-static void compile_expression(void);
-static void compile_and_expr(void);
-static void compile_not_expr(void);
-static void compile_comp_expr(void);
-static void compile_add_expr(void);
-static void compile_term(void);
-static void compile_factor(void);
+static uint8_t compile_expression(void);
+static uint8_t compile_and_expr(void);
+static uint8_t compile_not_expr(void);
+static uint8_t compile_comp_expr(void);
+static uint8_t compile_add_expr(void);
+static uint8_t compile_term(void);
+static uint8_t compile_factor(void);
 static void compile_end(void);
-static void compile_sndcmd(void);
-static void compile_sndevt(void);
+static void compile_cmd(void);
+static void compile_event(void);
 static uint8_t compile_width(bool bSet);
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
 static void error(char *fmt, ...);
@@ -142,8 +148,15 @@ void jbi_init(void) {
     sym_add("and", 0, AND);
     sym_add("or", 0, OR);
     sym_add("not", 0, NOT);
-    sym_add("sndcmd", 0, SNDCMD);
-    sym_add("sndevt", 0, SNDEVT);
+    sym_add("cmd", 0, CMD);
+    sym_add("event", 0, EVENT);
+    sym_add("left$", 0, LEFTS);
+    sym_add("right$", 0, RIGHTS);
+    sym_add("mid$", 0, MIDS);
+    sym_add("len", 0, LEN);
+    sym_add("val", 0, VAL);
+    sym_add("str$", 0, STRS);
+    sym_add("spc", 0, SPC);
     StartOfVars = CurrVarIdx;
     CurrVarIdx = 0;
     Pc = 0;
@@ -346,8 +359,8 @@ static void compile_stmt(void) {
     case PRINT: compile_print(); break;
     case NEXT: compile_next(); break;
     case END: compile_end(); break;
-    case SNDCMD: compile_sndcmd(); break;
-    case SNDEVT: compile_sndevt(); break;
+    case CMD: compile_cmd(); break;
+    case EVENT: compile_event(); break;
     default: error("unknown statement '%u'", tok); break;
     }
 }
@@ -438,26 +451,43 @@ static void compile_return(void) {
 static void compile_var(void) {
     uint8_t tok = next();
     uint16_t idx = SymIdx;
+    uint8_t type;
 
     if(tok == SID) { // let a$ = "string"
         match('=');
-        compile_string();
+        type = compile_expression();
+        if(type != STR) {
+            error("type mismatch");
+            return;
+        }
         // Var[value] = pop()
         a_Code[Pc++] = k_LET;
         a_Code[Pc++] = a_Symbol[idx].value;
     } else if(tok == ID) { // let a = expression
         match('=');
-        compile_expression();
+        type = compile_expression();
+        if(type != NUM) {
+            error("type mismatch");
+            return;
+        }
         // Var[value] = pop()
         a_Code[Pc++] = k_LET;
         a_Code[Pc++] = a_Symbol[idx].value;
     } else if(tok == BUFF) { // let rx[0] = 1
         match('[');
-        compile_expression();
+        type = compile_expression();
+        if(type != NUM) {
+            error("type mismatch");
+            return;
+        }
         uint8_t instr = compile_width(1);
         match(']');
         match('=');
-        compile_expression();
+        type = compile_expression();
+        if(type != NUM) {
+            error("type mismatch");
+            return;
+        }
         a_Code[Pc++] = instr;
         a_Code[Pc++] = a_Symbol[idx].value;
     } else {
@@ -471,6 +501,7 @@ static void remark(void) {
 }
 
 static void compile_print(void) {
+    uint8_t type;
     uint8_t tok = lookahead();
     if(tok == 0) {
         a_Code[Pc++] = k_PRINTNL;
@@ -486,8 +517,17 @@ static void compile_print(void) {
             a_Code[Pc++] = k_PRINTS;
             match(SID);
         } else {
-            compile_expression();
-            a_Code[Pc++] = k_PRINTV;
+            type = compile_expression();
+            if(type == NUM) {
+                a_Code[Pc++] = k_PRINTV;
+            } else if(type == BUFF) {
+                a_Code[Pc++] = k_PRINTV;
+            } else if(type == STR) {
+                a_Code[Pc++] = k_PRINTS;
+            } else {
+                error("type mismatch");
+                return;
+            }
         }
         tok = lookahead();
         if(tok == ',') {
@@ -514,76 +554,130 @@ static void compile_string(void) {
     Pc += len - 1;
 }
 
-static void compile_expression(void) {
-    compile_and_expr();
+static uint8_t compile_expression(void) {
+    uint8_t type1 = compile_and_expr();
     uint8_t op = lookahead();
     while(op == OR) {
         match(op);
+        uint8_t type2 = compile_and_expr();
+        if(type1 != NUM || type2 != NUM) {
+            error("type mismatch");
+            return type2;
+        }
         a_Code[Pc++] = k_OR;
         op = lookahead();
     }
+    return type1;
 }
 
-static void compile_and_expr(void) {
-    compile_not_expr();
+static uint8_t compile_and_expr(void) {
+    uint8_t type1 = compile_not_expr();
     uint8_t op = lookahead();
     while(op == AND) {
         match(op);
+        uint8_t type2 = compile_not_expr();
+        if(type1 != NUM || type2 != NUM) {
+            error("type mismatch");
+            return type2;
+        }
         a_Code[Pc++] = k_AND;
         op = lookahead();
     }
+    return type1;
 }
 
-static void compile_not_expr(void) {
+static uint8_t compile_not_expr(void) {
+    uint8_t type;
     uint8_t op = lookahead();
     if(op == NOT) {
-      match(op);
-      compile_comp_expr();
-      a_Code[Pc++] = k_NOT;
+        match(op);
+        type = compile_comp_expr();
+        if(type != NUM) {
+            error("type mismatch");
+            return type;
+        }
+          a_Code[Pc++] = k_NOT;
     } else {
-      compile_comp_expr();
+        type = compile_comp_expr();
     }
+    return type;
 }
 
-static void compile_comp_expr(void) {
-    compile_add_expr();
+static uint8_t compile_comp_expr(void) {
+    uint8_t type1 = compile_add_expr();
     uint8_t op = lookahead();
     while(op == EQ || op == NQ || op == LE || op == LQ || op == GR || op == GQ) {
         match(op);
-        compile_add_expr();
-        switch(op) {
-        case EQ: a_Code[Pc++] = k_EQUAL; break;
-        case NQ: a_Code[Pc++] = k_NEQUAL; break;
-        case LE: a_Code[Pc++] = k_LESS; break;
-        case LQ: a_Code[Pc++] = k_LESSEQUAL; break;
-        case GR: a_Code[Pc++] = k_GREATER; break;
-        case GQ: a_Code[Pc++] = k_GREATEREQUAL; break;
+        uint8_t type2 = compile_add_expr();
+        if(type1 != type2) {
+            error("type mismatch");
+            return type2;
+        }
+        if(type1 == STR && op != EQ && op != NQ) {
+            error("type mismatch");
+            return type2;
+        }
+        if(type1 == STR) {
+            switch(op) {
+            case EQ: a_Code[Pc++] = k_EQUAL; break;
+            case NQ: a_Code[Pc++] = k_NEQUAL; break;
+            default: error("invalid operator for string comparison"); break;
+            }
+        } else {
+            switch(op) {
+            case EQ: a_Code[Pc++] = k_EQUAL; break;
+            case NQ: a_Code[Pc++] = k_NEQUAL; break;
+            case LE: a_Code[Pc++] = k_LESS; break;
+            case LQ: a_Code[Pc++] = k_LESSEQUAL; break;
+            case GR: a_Code[Pc++] = k_GREATER; break;
+            case GQ: a_Code[Pc++] = k_GREATEREQUAL; break;
+            default: error("unknown operator '%u'", op); break;
+            }
         }
         op = lookahead();
     }
+    return type1;
 }
 
-static void compile_add_expr(void) {
-    compile_term();
+static uint8_t compile_add_expr(void) {
+    uint8_t type1 = compile_term();
     uint8_t op = lookahead();
     while(op == '+' || op == '-') {
         match(op);
-        compile_term();
+        uint8_t type2 = compile_term();
+        if(type1 != type2) {
+            error("type mismatch");
+            return type2;
+        }
         if(op == '+') {
-          a_Code[Pc++] = k_ADD;
+            if(type1 == NUM) {
+              a_Code[Pc++] = k_ADD;
+            } else {
+              a_Code[Pc++] = k_SADD;
+            }
         } else {
-          a_Code[Pc++] = k_SUB;
+            if(type1 == NUM) {
+              a_Code[Pc++] = k_SUB;
+            } else {
+              error("type mismatch");
+              return type2;
+            }
         }
         op = lookahead();
     }
+    return type1;
 }
 
-static void compile_term(void) {
-    compile_factor();
+static uint8_t compile_term(void) {
+    uint8_t type1 = compile_factor();
     uint8_t op = lookahead();
     while(op == '*' || op == '/' || op == '%') {
         match(op);
-        compile_factor();
+        uint8_t type2 = compile_factor();
+        if(type1 != NUM || type2 != NUM) {
+            error("type mismatch");
+            return type2;
+        }
         if(op == '*') {
           a_Code[Pc++] = k_MUL;
         } else if(op == '%') {
@@ -593,17 +687,19 @@ static void compile_term(void) {
         }
         op = lookahead();
     }
+    return type1;
 }
 
-static void compile_factor(void) {
+static uint8_t compile_factor(void) {
+    uint8_t type = 0;
     uint8_t tok = lookahead();
     switch(tok) {
     case '(':
         match('(');
-        compile_expression();
+        type = compile_expression();
         match(')');
         break;
-    case NUM:
+    case NUM: // number, like 1234
         match(NUM);
         if(Value < 256)
         {
@@ -618,13 +714,15 @@ static void compile_factor(void) {
           a_Code[Pc++] = (Value >> 16) & 0xFF;
           a_Code[Pc++] = (Value >> 24) & 0xFF;
         }
+        type = NUM;
         break;
-    case ID:
+    case ID: // variable, like var1
         match(ID);
         a_Code[Pc++] = k_VAR;
         a_Code[Pc++] = a_Symbol[SymIdx].value;
+        type = NUM;
         break;
-    case BUFF:
+    case BUFF: // buffer, like rx[0]
         uint8_t val = a_Symbol[SymIdx].value;
         match(BUFF);
         match('[');
@@ -633,33 +731,167 @@ static void compile_factor(void) {
         match(']');
         a_Code[Pc++] = instr;
         a_Code[Pc++] = val;
+        type = BUFF;
+        break;
+    case STR: // string, like "Hello"
+        match(STR);
+        // push string address
+        uint16_t len = strlen(a_Buff);
+        a_Buff[len - 1] = '\0';
+        a_Code[Pc++] = k_STRING;
+        a_Code[Pc++] = len - 1; // without quotes but with 0
+        strcpy((char*)&a_Code[Pc], a_Buff + 1);
+        Pc += len - 1;
+        type = STR;
+        break;
+    case SID: // string variable, like A$
+        match(SID);
+        a_Code[Pc++] = k_VAR;
+        a_Code[Pc++] = a_Symbol[SymIdx].value;
+        type = STR;
+        break;
+    case LEFTS: // left function
+        match(LEFTS);
+        match('(');
+        type = compile_expression();
+        if(type != STR) {
+            error("type mismatch");
+            return type;
+        }
+        match(',');
+        type = compile_expression();
+        if(type != NUM) {
+            error("type mismatch");
+            return type;
+        }
+        match(')');
+        a_Code[Pc++] = k_FUNC;
+        a_Code[Pc++] = k_LEFTS;
+        type = STR;
+        break;
+    case RIGHTS: // right function
+        match(RIGHTS);
+        match('(');
+        type = compile_expression();
+        if(type != STR) {
+            error("type mismatch");
+            return type;
+        }
+        match(',');
+        type = compile_expression();
+        if(type != NUM) {
+            error("type mismatch");
+            return type;
+        }
+        match(')');
+        a_Code[Pc++] = k_FUNC;
+        a_Code[Pc++] = k_RIGHTS;
+        type = STR;
+        break;
+    case MIDS: // mid function
+        match(MIDS);
+        match('(');
+        type = compile_expression();
+        if(type != STR) {
+            error("type mismatch");
+            return type;
+        }
+        match(',');
+        type = compile_expression();
+        if(type != NUM) {
+            error("type mismatch");
+            return type;
+        }
+        match(',');
+        type = compile_expression();
+        if(type != NUM) {
+            error("type mismatch");
+            return type;
+        }
+        match(')');
+        a_Code[Pc++] = k_FUNC;
+        a_Code[Pc++] = k_MIDS;
+        type = STR;
+        break;
+    case LEN: // len function
+        match(LEN);
+        match('(');
+        type = compile_expression();
+        if(type != STR) {
+            error("type mismatch");
+            return type;
+        }
+        match(')');
+        a_Code[Pc++] = k_FUNC;
+        a_Code[Pc++] = k_LEN;
+        type = NUM;
+        break;
+    case VAL: // val function
+        match(VAL);
+        match('(');
+        type = compile_expression();
+        if(type != STR) {
+            error("type mismatch");
+            return type;
+        }
+        match(')');
+        a_Code[Pc++] = k_FUNC;
+        a_Code[Pc++] = k_VAL;
+        type = NUM;
+        break;
+    case STRS: // str$ function
+        match(STRS);
+        match('(');
+        type = compile_expression();
+        if(type != NUM) {
+            error("type mismatch");
+            return type;
+        }
+        match(')');
+        a_Code[Pc++] = k_FUNC;
+        a_Code[Pc++] = k_STRS;
+        type = STR;
+        break;
+    case SPC: // spc function
+        match(SPC);
+        match('(');
+        type = compile_expression();
+        if(type != NUM) {
+            error("type mismatch");
+            return type;
+        }
+        match(')');
+        a_Code[Pc++] = k_FUNC;
+        a_Code[Pc++] = k_SPC;
+        type = STR;
         break;
     default:
         error("unknown factor '%u'", tok);
         break;
     }
+    return type;
 }
 
 static void compile_end(void) {
     a_Code[Pc++] = k_END;
 }
 
-static void compile_sndcmd(void) {
+static void compile_cmd(void) {
     match('(');
     compile_expression();
     match(')');
     a_Code[Pc++] = k_FUNC;
-    a_Code[Pc++] = JBI_SNDCMD;
+    a_Code[Pc++] = JBI_CMD;
 }
 
-static void compile_sndevt(void) {
+static void compile_event(void) {
     match('(');
     compile_expression();
     match(',');
     compile_expression();
     match(')');
     a_Code[Pc++] = k_FUNC;
-    a_Code[Pc++] = JBI_SNDEVT;
+    a_Code[Pc++] = JBI_EVENT;
 }
 
 /*

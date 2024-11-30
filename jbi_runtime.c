@@ -43,6 +43,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define CPUSH(x) vm->callstack[(uint8_t)(vm->csp++) % k_STACK_SIZE] = x
 #define CPOP() vm->callstack[(uint8_t)(--vm->csp) % k_STACK_SIZE]
 
+#define STR(x) (x >= 0x8000 ? (char*)&vm->string_heap[x & 0x7FFF] : (char*)&p_programm[x])
+
 #define CHAR(x) (((x) - 0x30) & 0x1F)
 
 /***************************************************************************************************
@@ -56,9 +58,9 @@ static uint8_t aTestBuffer[256] = {0}; // TODO
 **    global functions
 ***************************************************************************************************/
 void *jbi_create(uint8_t num_vars, uint8_t* p_programm) {
-    uint16_t size = sizeof(t_VM) + num_vars * sizeof(uint32_t);
-    t_VM *vm = malloc(size);
-    memset(vm, 0, size);
+    t_VM *vm = malloc(sizeof(t_VM));
+    memset(vm, 0, sizeof(t_VM));
+    jbi_str_init(vm);
     assert(p_programm[0] == k_TAG);
     assert(p_programm[1] == k_VERSION);
     vm->pc = 2;
@@ -102,6 +104,7 @@ uint32_t jbi_pull_variable(void *pv_vm) {
 uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles) {
     uint32_t tmp1, tmp2;
     uint16_t idx;
+    uint16_t addr;
     uint8_t  var;
     uint8_t  *ptr;
     t_VM *vm = pv_vm;
@@ -116,7 +119,8 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
         case k_END:
             return JBI_END;
         case k_PRINTS:
-            PRINTF("%s", &p_programm[DPOP() % len] );
+            tmp1 = DPOP();
+            PRINTF("%s", STR(tmp1));
             vm->pc += 1;
             break;
         case k_PRINTV:
@@ -278,8 +282,50 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
             break;
         case k_FUNC:
             switch(p_programm[vm->pc + 1]) {
-            case JBI_SNDCMD: vm->pc += 2; return JBI_SNDCMD;
-            case JBI_SNDEVT: vm->pc += 2; return JBI_SNDEVT;
+            case JBI_CMD: vm->pc += 2; return JBI_CMD;
+            case JBI_EVENT: vm->pc += 2; return JBI_EVENT;
+            case k_LEFTS:
+                tmp2 = DPOP();  // number of characters
+                tmp1 = DPOP();  // string address
+                addr = jbi_str_alloc(vm, tmp2 + 1);
+                strncpy(&vm->string_heap[addr & 0x7FFF], STR(tmp1), tmp2);
+                DPUSH(addr);
+                vm->pc += 2;
+                break;
+            case k_RIGHTS:
+                tmp2 = DPOP();  // number of characters
+                tmp1 = DPOP();  // string address
+                addr = jbi_str_alloc(vm, tmp2 + 1);
+                strncpy(&vm->string_heap[addr & 0x7FFF], STR(tmp1) + strlen(STR(tmp1)) - tmp2, tmp2);
+                DPUSH(addr);
+                vm->pc += 2;
+                break;
+            case k_MIDS:
+                tmp2 = DPOP();  // number of characters
+                tmp1 = DPOP();  // start position
+                idx = DPOP();   // string address
+                addr = jbi_str_alloc(vm, tmp2 + 1);
+                strncpy(&vm->string_heap[addr & 0x7FFF], STR(idx) + tmp1, tmp2);
+                DPUSH(addr);
+                vm->pc += 2;
+                break;
+            case k_LEN:
+                tmp1 = DPOP();
+                DPUSH(strlen(STR(tmp1)));
+                vm->pc += 2;
+                break;
+            case k_VAL:
+                tmp1 = DPOP();
+                DPUSH(atoi(STR(tmp1)));
+                vm->pc += 2;
+                break;
+            case k_STRS:
+                tmp1 = DPOP();
+                addr = jbi_str_alloc(vm, 12);
+                sprintf(&vm->string_heap[addr & 0x7FFF], "%d", tmp1);
+                DPUSH(addr);
+                vm->pc += 2;
+                break;
             default:
                 PRINTF("Error: unknown function '%u'\n", p_programm[vm->pc + 1]);
                 vm->pc += 2;
@@ -324,6 +370,16 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
             ptr = vm->buffer[var];
             DPUSH(ACS32(ptr[DPOP()]));
             vm->pc += 2;
+            break;
+        case k_SADD:
+            tmp2 = DPOP();
+            tmp1 = DPOP();
+            uint8_t len = strlen(STR(tmp1)) + strlen(STR(tmp2)) + 1;
+            addr = jbi_str_alloc(vm, len);
+            strcpy(&vm->string_heap[addr & 0x7FFF], STR(tmp1));
+            strcat(&vm->string_heap[addr & 0x7FFF], STR(tmp2));
+            DPUSH(addr);
+            vm->pc += 1;
             break;
         default:
             return JBI_ERROR;
