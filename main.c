@@ -55,6 +55,7 @@ int main(int argc, char* argv[]) {
     uint8_t evt1, evt2, buf1, buf2;
     uint32_t *p1, *p2;
     uint8_t  *p3, *p4;
+    uint16_t on_can;
     
     if (argc != 2) {
         printf("Usage: %s <programm>\n", argv[0]);
@@ -67,12 +68,13 @@ int main(int argc, char* argv[]) {
     evt2 = jbi_add_variable("evt2");
     buf1 = jbi_add_buffer("buf1", 0);
     buf2 = jbi_add_buffer("buf2", 1);
-    uint8_t *code = jbi_compiler("../test.bas", &size, &num_vars);
+    uint8_t *code = jbi_compiler("../temp.bas", &size, &num_vars);
 
     if(code == NULL) {
         return 1;
     }
     jbi_output_symbol_table();
+    on_can = jbi_get_label_address("on_can");
 
     printf("\nJoes Basic Interpreter V1.0\n");
     void *instance = jbi_create(num_vars, code);
@@ -91,12 +93,14 @@ int main(int argc, char* argv[]) {
         cycles += 50;
         msleep(100);
         if(res == JBI_CMD) {
-            uint32_t num = jbi_pull_variable(instance);
+            uint32_t num = jbi_pop_variable(instance);
             printf("Send command to %u: %02X %02X %02X %02X\n", num, p3[0], p3[1], p3[2], p3[3]);
         } else if(res == JBI_EVENT) {
-            uint32_t evt = jbi_pull_variable(instance);
-            uint32_t num = jbi_pull_variable(instance);
+            uint32_t evt = jbi_pop_variable(instance);
+            uint32_t num = jbi_pop_variable(instance);
             printf("Send event to %u: %u\n", num, evt);
+        } else {
+            jbi_call_1(instance, on_can, 12345);
         }
     }
     jbi_destroy(instance);

@@ -60,7 +60,7 @@ char *jbi_scanner(char *p_in, char *p_out) {
             while(is_alnum(*p_in)) {
                 *p_out++ = *p_in++;
             }
-            if(*p_in == '$') { // String variable
+            if(*p_in == '$') { // String variable/function
                 *p_out++ = *p_in++;
             }
             *p_out++ = '\0';

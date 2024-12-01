@@ -26,9 +26,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define k_BUFF_SIZE         (128)
 #define k_NUM_BUFF          (2)
 #define k_NUM_VARS          (64)
-#define k_STR_BLOCK_SIZE    (16)    // Must be a multiple of 4 (real size is MIN_BLOCK_SIZE - 1)
-#define k_STR_FREE_TAG      (0)     // Also used for number of blocks
-#define k_STR_HEAP_SIZE     (1024)
+#define k_MEM_BLOCK_SIZE    (16)    // Must be a multiple of 4 (real size is MIN_BLOCK_SIZE - 1)
+#define k_MEM_FREE_TAG      (0)     // Also used for number of blocks
+#define k_MEM_HEAP_SIZE     (1024)
 
 #define ACS8(x)   *(uint8_t*)&(x)
 #define ACS16(x)  *(uint16_t*)&(x)
@@ -55,12 +55,12 @@ enum {
     k_AND,                // 0F (pop two values from stack)
     k_OR,                 // 10 (pop two values from stack)
     k_NOT,                // 11 (pop one value from stack)
-    k_EQUAL,              // 12 (compare two values from stack)
-    k_NEQUAL,             // 13 (compare two values from stack)
-    k_LESS,               // 14 (compare two values from stack)     
-    k_LESSEQUAL,          // 15 (compare two values from stack) 
-    k_GREATER,            // 16 (compare two values from stack)      
-    k_GREATEREQUAL,       // 17 (compare two values from stack)
+    k_EQU,                // 12 (compare two values from stack)
+    k_NEQU,               // 13 (compare two values from stack)
+    k_LE,                 // 14 (compare two values from stack)     
+    k_LEEQU,              // 15 (compare two values from stack) 
+    k_GR,                 // 16 (compare two values from stack)      
+    k_GREQU,              // 17 (compare two values from stack)
     k_GOTO,               // 18 (16 bit programm address)
     k_GOSUB,              // 19 (16 bit programm address)
     k_RETURN,             // 1A (pop return address)
@@ -73,7 +73,13 @@ enum {
     k_BUFF_G2,            // 21 xx (buffer: get one short)
     k_BUFF_S4,            // 22 xx (buffer: set one long)
     k_BUFF_G4,            // 23 xx (buffer: get one long)
-    k_SADD,               // 24 (add two strings from stack)
+    k_S_ADD,              // 24 (add two strings from stack)
+    k_S_EQU,              // 25 (compare two values from stack)
+    k_S_NEQU,             // 26 (compare two values from stack)
+    k_S_LE,               // 27 (compare two values from stack)     
+    k_S_LEEQU,            // 28 (compare two values from stack) 
+    k_S_GR,               // 29 (compare two values from stack)      
+    k_S_GREQU,            // 2A (compare two values from stack)
 };
 
 // Function call definitions (in addition to JBI_CMD,... return values)
@@ -138,12 +144,12 @@ typedef struct {
     uint32_t variables[k_NUM_VARS];
     uint16_t str_start_addr;
     uint8_t  compensation;  // To force the alignment of buffers to 4 bytes
-    uint8_t  string_heap[k_STR_HEAP_SIZE];
+    uint8_t  heap[k_MEM_HEAP_SIZE];
 } t_VM;
 
 char *jbi_scanner(char *p_in, char *p_out);
 
-void jbi_str_init(t_VM *p_vm);
-uint16_t jbi_str_alloc(t_VM *p_vm, uint16_t bytes);
-void jbi_str_free(t_VM *p_vm, uint16_t addr);
-uint16_t jbi_str_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes);
+void jbi_mem_init(t_VM *p_vm);
+uint16_t jbi_mem_alloc(t_VM *p_vm, uint16_t bytes);
+void jbi_mem_free(t_VM *p_vm, uint16_t addr);
+uint16_t jbi_mem_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes);

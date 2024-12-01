@@ -43,7 +43,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define CPUSH(x) vm->callstack[(uint8_t)(vm->csp++) % k_STACK_SIZE] = x
 #define CPOP() vm->callstack[(uint8_t)(--vm->csp) % k_STACK_SIZE]
 
-#define STR(x) (x >= 0x8000 ? (char*)&vm->string_heap[x & 0x7FFF] : (char*)&p_programm[x])
+#define STR(x) (x >= 0x8000 ? (char*)&vm->heap[x & 0x7FFF] : (char*)&p_programm[x])
 
 #define CHAR(x) (((x) - 0x30) & 0x1F)
 
@@ -60,7 +60,7 @@ static uint8_t aTestBuffer[256] = {0}; // TODO
 void *jbi_create(uint8_t num_vars, uint8_t* p_programm) {
     t_VM *vm = malloc(sizeof(t_VM));
     memset(vm, 0, sizeof(t_VM));
-    jbi_str_init(vm);
+    jbi_mem_init(vm);
     assert(p_programm[0] == k_TAG);
     assert(p_programm[1] == k_VERSION);
     vm->pc = 2;
@@ -77,9 +77,39 @@ uint8_t *jbi_get_buffer_address(void *pv_vm, uint8_t idx) {
     return vm->buffer[idx];
 }
 
-uint32_t jbi_pull_variable(void *pv_vm) {
+uint32_t jbi_pop_variable(void *pv_vm) {
     t_VM *vm = pv_vm;
     return DPOP();
+}
+
+void jbi_call_0(void * pv_vm, uint16_t addr) {
+    t_VM *vm = pv_vm;
+    CPUSH(vm->pc);
+    vm->pc = addr;
+}
+
+void jbi_call_1(void * pv_vm, uint16_t addr, uint32_t param1) {
+    t_VM *vm = pv_vm;
+    CPUSH(vm->pc);
+    vm->pc = addr;
+    DPUSH(param1);
+}
+
+void jbi_call_2(void * pv_vm, uint16_t addr, uint32_t param1, uint32_t param2){
+    t_VM *vm = pv_vm;
+    CPUSH(vm->pc);
+    vm->pc = addr;
+    DPUSH(param1);
+    DPUSH(param2);
+}
+
+void jbi_call_3(void * pv_vm, uint16_t addr, uint32_t param1, uint32_t param2, uint32_t param3){
+    t_VM *vm = pv_vm;
+    CPUSH(vm->pc);
+    vm->pc = addr;
+    DPUSH(param1);
+    DPUSH(param2);
+    DPUSH(param3);
 }
 
 /***************************************************************************************************
@@ -213,37 +243,37 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
             DPUSH(!DPOP());
             vm->pc += 1;
             break;
-        case k_EQUAL:
+        case k_EQU:
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(tmp1 == tmp2);
             vm->pc += 1;
             break;
-        case k_NEQUAL :
+        case k_NEQU :
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(tmp1 != tmp2);
             vm->pc += 1;
             break;
-        case k_LESS:
+        case k_LE:
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(tmp1 < tmp2);
             vm->pc += 1;
             break;
-        case k_LESSEQUAL:
+        case k_LEEQU:
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(tmp1 <= tmp2);
             vm->pc += 1;
             break;
-        case k_GREATER:
+        case k_GR:
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(tmp1 > tmp2);
             vm->pc += 1;
             break;
-        case k_GREATEREQUAL:
+        case k_GREQU:
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(tmp1 >= tmp2);
@@ -287,16 +317,24 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
             case k_LEFTS:
                 tmp2 = DPOP();  // number of characters
                 tmp1 = DPOP();  // string address
-                addr = jbi_str_alloc(vm, tmp2 + 1);
-                strncpy(&vm->string_heap[addr & 0x7FFF], STR(tmp1), tmp2);
+                addr = jbi_mem_alloc(vm, tmp2 + 1);
+                if(addr == 0) {
+                    PRINTF("Error: Out of memory\n");
+                    return JBI_ERROR;
+                }
+                strncpy(&vm->heap[addr & 0x7FFF], STR(tmp1), tmp2);
                 DPUSH(addr);
                 vm->pc += 2;
                 break;
             case k_RIGHTS:
                 tmp2 = DPOP();  // number of characters
                 tmp1 = DPOP();  // string address
-                addr = jbi_str_alloc(vm, tmp2 + 1);
-                strncpy(&vm->string_heap[addr & 0x7FFF], STR(tmp1) + strlen(STR(tmp1)) - tmp2, tmp2);
+                addr = jbi_mem_alloc(vm, tmp2 + 1);
+                if(addr == 0) {
+                    PRINTF("Error: Out of memory\n");
+                    return JBI_ERROR;
+                }
+                strncpy(&vm->heap[addr & 0x7FFF], STR(tmp1) + strlen(STR(tmp1)) - tmp2, tmp2);
                 DPUSH(addr);
                 vm->pc += 2;
                 break;
@@ -304,8 +342,12 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
                 tmp2 = DPOP();  // number of characters
                 tmp1 = DPOP();  // start position
                 idx = DPOP();   // string address
-                addr = jbi_str_alloc(vm, tmp2 + 1);
-                strncpy(&vm->string_heap[addr & 0x7FFF], STR(idx) + tmp1, tmp2);
+                addr = jbi_mem_alloc(vm, tmp2 + 1);
+                if(addr == 0) {
+                    PRINTF("Error: Out of memory\n");
+                    return JBI_ERROR;
+                }
+                strncpy(&vm->heap[addr & 0x7FFF], STR(idx) + tmp1, tmp2);
                 DPUSH(addr);
                 vm->pc += 2;
                 break;
@@ -321,8 +363,12 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
                 break;
             case k_STRS:
                 tmp1 = DPOP();
-                addr = jbi_str_alloc(vm, 12);
-                sprintf(&vm->string_heap[addr & 0x7FFF], "%d", tmp1);
+                addr = jbi_mem_alloc(vm, 12);
+                if(addr == 0) {
+                    PRINTF("Error: Out of memory\n");
+                    return JBI_ERROR;
+                }
+                sprintf(&vm->heap[addr & 0x7FFF], "%d", tmp1);
                 DPUSH(addr);
                 vm->pc += 2;
                 break;
@@ -371,14 +417,53 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
             DPUSH(ACS32(ptr[DPOP()]));
             vm->pc += 2;
             break;
-        case k_SADD:
+        case k_S_ADD:
             tmp2 = DPOP();
             tmp1 = DPOP();
             uint8_t len = strlen(STR(tmp1)) + strlen(STR(tmp2)) + 1;
-            addr = jbi_str_alloc(vm, len);
-            strcpy(&vm->string_heap[addr & 0x7FFF], STR(tmp1));
-            strcat(&vm->string_heap[addr & 0x7FFF], STR(tmp2));
+            addr = jbi_mem_alloc(vm, len);
+            if(addr == 0) {
+                PRINTF("Error: Out of memory\n");
+                return JBI_ERROR;
+            }
+            strcpy(&vm->heap[addr & 0x7FFF], STR(tmp1));
+            strcat(&vm->heap[addr & 0x7FFF], STR(tmp2));
             DPUSH(addr);
+            vm->pc += 1;
+            break;
+        case k_S_EQU:
+            tmp2 = DPOP();
+            tmp1 = DPOP();
+            DPUSH(strcmp(STR(tmp1), STR(tmp2)) == 0 ? 1 : 0);
+            vm->pc += 1;
+            break;
+        case k_S_NEQU :
+            tmp2 = DPOP();
+            tmp1 = DPOP();
+            DPUSH(strcmp(STR(tmp1), STR(tmp2)) == 0 ? 0 : 1);
+            vm->pc += 1;
+            break;
+        case k_S_LE:
+            tmp2 = DPOP();
+            tmp1 = DPOP();
+            DPUSH(strcmp(STR(tmp1), STR(tmp2)) < 0 ? 1 : 0);
+            vm->pc += 1;
+            break;
+        case k_S_LEEQU:
+            tmp2 = DPOP();
+            tmp1 = DPOP();
+            DPUSH(strcmp(STR(tmp1), STR(tmp2)) <= 0 ? 1 : 0);
+            vm->pc += 1;
+            break;
+        case k_S_GR:
+            tmp2 = DPOP();
+            tmp1 = DPOP();
+            DPUSH(strcmp(STR(tmp1), STR(tmp2)) > 0 ? 1 : 0);
+            vm->pc += 1;
+        case k_S_GREQU:
+            tmp2 = DPOP();
+            tmp1 = DPOP();
+            DPUSH(strcmp(STR(tmp1), STR(tmp2)) >= 0 ? 1 : 0);
             vm->pc += 1;
             break;
         default:

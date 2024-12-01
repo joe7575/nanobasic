@@ -28,28 +28,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "jbi.h"
 #include "jbi_int.h"
 
-#define NUM_BLOCKS(bytes)   (bytes / (k_STR_BLOCK_SIZE - 1) + (bytes % (k_STR_BLOCK_SIZE - 1) ? 1 : 0))
+#define NUM_BLOCKS(bytes)   (bytes / (k_MEM_BLOCK_SIZE - 1) + (bytes % (k_MEM_BLOCK_SIZE - 1) ? 1 : 0))
 #define MIN(a, b)           ((a) < (b) ? (a) : (b))
 
-void jbi_str_init(t_VM *p_vm) {
-    for(int i = 0; i < k_STR_HEAP_SIZE; i += k_STR_BLOCK_SIZE) {
-        p_vm->string_heap[i] = k_STR_FREE_TAG;
+void jbi_mem_init(t_VM *p_vm) {
+    for(int i = 0; i < k_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
+        p_vm->heap[i] = k_MEM_FREE_TAG;
     }
     p_vm->str_start_addr = 0;
 }
 
-uint16_t jbi_str_alloc(t_VM *p_vm, uint16_t bytes) {
+uint16_t jbi_mem_alloc(t_VM *p_vm, uint16_t bytes) {
     uint16_t num_blocks = NUM_BLOCKS(bytes);
     uint16_t start = 0;
     uint16_t count = 0;
     uint16_t blocked = 0;
 
-    for(int i = p_vm->str_start_addr; i < k_STR_HEAP_SIZE; i += k_STR_BLOCK_SIZE) {
+    for(int i = p_vm->str_start_addr; i < k_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
         if(blocked > 0) {
             blocked--;
             continue;
         }
-        if(p_vm->string_heap[i] == k_STR_FREE_TAG) {
+        if(p_vm->heap[i] == k_MEM_FREE_TAG) {
             if(count == 0) {
                 start = i;
                 count = 1;
@@ -57,12 +57,12 @@ uint16_t jbi_str_alloc(t_VM *p_vm, uint16_t bytes) {
                 count++;
             }
             if(count == num_blocks) {
-                p_vm->string_heap[start] = num_blocks;
+                p_vm->heap[start] = num_blocks;
                 p_vm->str_start_addr = start;
                 return 0x8000 + start + 1;
             }
         } else {
-            blocked = p_vm->string_heap[i] - 1;
+            blocked = p_vm->heap[i] - 1;
             start = 0;
             count = 0;
         }
@@ -70,41 +70,41 @@ uint16_t jbi_str_alloc(t_VM *p_vm, uint16_t bytes) {
     return 0;
 }
 
-void jbi_str_free(t_VM *p_vm, uint16_t addr) {
+void jbi_mem_free(t_VM *p_vm, uint16_t addr) {
     addr = (addr & 0x7FFF) - 1;
-    if(addr < k_STR_HEAP_SIZE) {
-        uint16_t size = p_vm->string_heap[addr] * k_STR_BLOCK_SIZE;
-        if((addr + size) <= k_STR_HEAP_SIZE) {
-            for(uint8_t i = 0; i < size; i += k_STR_BLOCK_SIZE) {
-                p_vm->string_heap[addr + i] = k_STR_FREE_TAG;
+    if(addr < k_MEM_HEAP_SIZE) {
+        uint16_t size = p_vm->heap[addr] * k_MEM_BLOCK_SIZE;
+        if((addr + size) <= k_MEM_HEAP_SIZE) {
+            for(uint8_t i = 0; i < size; i += k_MEM_BLOCK_SIZE) {
+                p_vm->heap[addr + i] = k_MEM_FREE_TAG;
             }
             p_vm->str_start_addr = MIN(p_vm->str_start_addr, addr);
         }
     }
 }
 
-uint16_t jbi_str_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes) {
+uint16_t jbi_mem_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes) {
     addr = (addr & 0x7FFF) - 1;
-    uint8_t num_blocks = p_vm->string_heap[addr];
+    uint8_t num_blocks = p_vm->heap[addr];
     uint16_t new_num_blocks = NUM_BLOCKS(bytes);
     if(new_num_blocks == num_blocks) {
         return 0x8000 + addr + 1;
     }
     if(new_num_blocks < num_blocks) {
-        p_vm->string_heap[addr] = new_num_blocks;
-        uint16_t start = addr + new_num_blocks * k_STR_BLOCK_SIZE;
-        uint16_t stop = addr + num_blocks * k_STR_BLOCK_SIZE;
-        for(uint8_t i = start; i < stop; i += k_STR_BLOCK_SIZE) {
-           p_vm->string_heap[i] = k_STR_FREE_TAG;
+        p_vm->heap[addr] = new_num_blocks;
+        uint16_t start = addr + new_num_blocks * k_MEM_BLOCK_SIZE;
+        uint16_t stop = addr + num_blocks * k_MEM_BLOCK_SIZE;
+        for(uint8_t i = start; i < stop; i += k_MEM_BLOCK_SIZE) {
+           p_vm->heap[i] = k_MEM_FREE_TAG;
         }
         return 0x8000 + addr + 1;
     }
-    uint16_t new = jbi_str_alloc(p_vm, bytes);
+    uint16_t new = jbi_mem_alloc(p_vm, bytes);
     if(new == 0) {
         return 0;
     }
-    memcpy(&p_vm->string_heap[new & 0x7FFF], &p_vm->string_heap[addr + 1], bytes);
-    jbi_str_free(p_vm, addr + 1);
+    memcpy(&p_vm->heap[new & 0x7FFF], &p_vm->heap[addr + 1], bytes);
+    jbi_mem_free(p_vm, addr + 1);
     return new;
 }
 
@@ -114,9 +114,9 @@ void mem_dump(t_VM *p_vm) {
     uint8_t num_blocks = 0;
 
     printf("Memory dump:\n");
-    for(int i = 0; i < k_STR_HEAP_SIZE; i += k_STR_BLOCK_SIZE) {
+    for(int i = 0; i < k_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
         if(num_blocks == 0) {
-            num_blocks = p_vm->string_heap[i];
+            num_blocks = p_vm->heap[i];
             printf("%02d ", num_blocks);
             if(num_blocks > 0) {
                 num_blocks--;
@@ -126,7 +126,7 @@ void mem_dump(t_VM *p_vm) {
             num_blocks--;
             printf("xx ");
         }
-        if((i + k_STR_BLOCK_SIZE) % (k_STR_BLOCK_SIZE * 32) == 0) {
+        if((i + k_MEM_BLOCK_SIZE) % (k_MEM_BLOCK_SIZE * 32) == 0) {
             printf("\n");
         }
     }
@@ -137,34 +137,34 @@ void test_memory(t_VM *p_vm) {
     uint16_t addr1, addr2, addr3, addr4;
 
     mem_dump(p_vm);
-    assert((addr1 = jbi_str_alloc(p_vm, 14)) != 0);
-    assert((addr2 = jbi_str_alloc(p_vm, 15)) != 0);
-    assert((addr3 = jbi_str_alloc(p_vm, 16)) != 0);
-    assert((addr4 = jbi_str_alloc(p_vm, 128)) != 0);
+    assert((addr1 = jbi_mem_alloc(p_vm, 14)) != 0);
+    assert((addr2 = jbi_mem_alloc(p_vm, 15)) != 0);
+    assert((addr3 = jbi_mem_alloc(p_vm, 16)) != 0);
+    assert((addr4 = jbi_mem_alloc(p_vm, 128)) != 0);
 
-    memset(p_vm->string_heap + (addr1 & 0x7FFF), 0x11, 14);
-    memset(p_vm->string_heap + (addr2 & 0x7FFF), 0x22, 15);
-    memset(p_vm->string_heap + (addr3 & 0x7FFF), 0x33, 16);
-    memset(p_vm->string_heap + (addr4 & 0x7FFF), 0x44, 128);
+    memset(p_vm->heap + (addr1 & 0x7FFF), 0x11, 14);
+    memset(p_vm->heap + (addr2 & 0x7FFF), 0x22, 15);
+    memset(p_vm->heap + (addr3 & 0x7FFF), 0x33, 16);
+    memset(p_vm->heap + (addr4 & 0x7FFF), 0x44, 128);
 
-    assert((uint64_t)(p_vm->string_heap + (addr1 & 0x7FFF)) % 4 == 0);
-    assert((uint64_t)(p_vm->string_heap + (addr2 & 0x7FFF)) % 4 == 0);
-    assert((uint64_t)(p_vm->string_heap + (addr3 & 0x7FFF)) % 4 == 0);
-    assert((uint64_t)(p_vm->string_heap + (addr4 & 0x7FFF)) % 4 == 0);
+    assert((uint64_t)(p_vm->heap + (addr1 & 0x7FFF)) % 4 == 0);
+    assert((uint64_t)(p_vm->heap + (addr2 & 0x7FFF)) % 4 == 0);
+    assert((uint64_t)(p_vm->heap + (addr3 & 0x7FFF)) % 4 == 0);
+    assert((uint64_t)(p_vm->heap + (addr4 & 0x7FFF)) % 4 == 0);
 
     mem_dump(p_vm);
-    jbi_str_free(p_vm, addr2);
-    jbi_str_free(p_vm, addr4);
+    jbi_mem_free(p_vm, addr2);
+    jbi_mem_free(p_vm, addr4);
     mem_dump(p_vm);
-    jbi_str_free(p_vm, addr1);
-    jbi_str_free(p_vm, addr3);
+    jbi_mem_free(p_vm, addr1);
+    jbi_mem_free(p_vm, addr3);
     mem_dump(p_vm);
 
-    assert((addr1 = jbi_str_alloc(p_vm, 30)) == 0x8001);
-    assert((addr1 = jbi_str_realloc(p_vm, addr1, 15)) == 0x8001);
+    assert((addr1 = jbi_mem_alloc(p_vm, 30)) == 0x8001);
+    assert((addr1 = jbi_mem_realloc(p_vm, addr1, 15)) == 0x8001);
     mem_dump(p_vm);
-    assert((addr2 = jbi_str_alloc(p_vm, 12)) == 0x8011);
-    assert((addr2 = jbi_str_realloc(p_vm, addr2, 30)) == 0x8021);
+    assert((addr2 = jbi_mem_alloc(p_vm, 12)) == 0x8011);
+    assert((addr2 = jbi_mem_realloc(p_vm, addr2, 30)) == 0x8021);
     mem_dump(p_vm);
 }
 #endif

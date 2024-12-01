@@ -30,7 +30,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 //#define DEBUG
 
-#define MAX_STR_LEN     256
+#define MAX_MEM_LEN     256
 #define MAX_NUM_SYM     256
 #define MAX_SYM_LEN     9
 #define MAX_CODE_LEN    1024
@@ -48,7 +48,7 @@ enum {
     EQ, NQ, LE, LQ, GR, GQ,
     CMD, EVENT, BUFF,
     LABEL,
-    LEFTS, RIGHTS, MIDS, LEN, VAL, STRS, SPC
+    LEFTS, RIGHTS, MIDS, LEN, VAL, STRS, SPC, STACK,
 };
 
 // Keywords
@@ -57,7 +57,7 @@ static char *Keywords[] = {
     "number", "string", "variable", "string variable", "=", "<>", "<", "<=", ">", ">=",
     "cmd", "event", "buffer",
     "label",
-    "left$", "right$", "mid$", "len", "val", "str$", "spc"
+    "left$", "right$", "mid$", "len", "val", "str$", "spc", "stack",
 };
 
 // Symbol table
@@ -77,8 +77,8 @@ static uint16_t ErrCount = 0;
 static uint16_t SymIdx = 0;
 static uint16_t StartOfVars = 0;
 static uint16_t a_ForLoopStartAddr[MAX_FOR_LOOPS] = {0};
-static char a_Line[MAX_STR_LEN];
-static char a_Buff[MAX_STR_LEN];
+static char a_Line[MAX_MEM_LEN];
+static char a_Buff[MAX_MEM_LEN];
 static char *p_pos = NULL;
 static char *p_next = NULL;
 static uint32_t Value;
@@ -117,6 +117,7 @@ static void compile_event(void);
 static uint8_t compile_width(bool bSet);
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
 static void error(char *fmt, ...);
+static char *token(uint8_t tok);
 
 /*************************************************************************************************
 ** API functions
@@ -157,6 +158,7 @@ void jbi_init(void) {
     sym_add("val", 0, VAL);
     sym_add("str$", 0, STRS);
     sym_add("spc", 0, SPC);
+    sym_add("stack", 0, STACK);
     StartOfVars = CurrVarIdx;
     CurrVarIdx = 0;
     Pc = 0;
@@ -220,6 +222,16 @@ void jbi_output_symbol_table(void) {
     }
 }
 
+uint16_t jbi_get_label_address(char *name) {
+    for(uint16_t i = StartOfVars; i < MAX_NUM_SYM; i++) {
+        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type == LABEL && strcmp(a_Symbol[i].name, name) == 0)
+        {
+            return a_Symbol[i].value;
+        }
+    }
+    return 0;
+}   
+
 /*************************************************************************************************
 ** Static functions
 *************************************************************************************************/
@@ -229,7 +241,7 @@ static void compile(FILE *fp) {
     Pc = PcStart;
 
     fseek(fp, 0, SEEK_SET);
-    while(fgets(a_Line, MAX_STR_LEN, fp) != NULL) {
+    while(fgets(a_Line, MAX_MEM_LEN, fp) != NULL) {
         Linenum++;
         p_pos = p_next = a_Line;
         compile_line();
@@ -305,11 +317,7 @@ static void match(uint8_t expected) {
     uint8_t tok = next();
     if (tok == expected) {
     } else {
-      if (expected >= LET && expected <= BUFF) {
-          error("%s expected instead of '%s'", Keywords[expected - LET], a_Buff);
-      } else {
-          error("'%c' expected instead of '%s'", expected, a_Buff);
-      }
+        error("%s expected instead of '%s'", token(tok), a_Buff);
     }
 }
 
@@ -361,7 +369,7 @@ static void compile_stmt(void) {
     case END: compile_end(); break;
     case CMD: compile_cmd(); break;
     case EVENT: compile_event(); break;
-    default: error("unknown statement '%u'", tok); break;
+    default: error("unknown statement '%s'", token(tok)); break;
     }
 }
 
@@ -619,18 +627,22 @@ static uint8_t compile_comp_expr(void) {
         }
         if(type1 == STR) {
             switch(op) {
-            case EQ: a_Code[Pc++] = k_EQUAL; break;
-            case NQ: a_Code[Pc++] = k_NEQUAL; break;
-            default: error("invalid operator for string comparison"); break;
+            case EQ: a_Code[Pc++] = k_S_EQU; break;
+            case NQ: a_Code[Pc++] = k_S_NEQU; break;
+            case LE: a_Code[Pc++] = k_S_LE; break;
+            case LQ: a_Code[Pc++] = k_S_LEEQU; break;
+            case GR: a_Code[Pc++] = k_S_GR; break;
+            case GQ: a_Code[Pc++] = k_S_GREQU; break;
+            default: error("unknown operator '%u'", op); break;
             }
         } else {
             switch(op) {
-            case EQ: a_Code[Pc++] = k_EQUAL; break;
-            case NQ: a_Code[Pc++] = k_NEQUAL; break;
-            case LE: a_Code[Pc++] = k_LESS; break;
-            case LQ: a_Code[Pc++] = k_LESSEQUAL; break;
-            case GR: a_Code[Pc++] = k_GREATER; break;
-            case GQ: a_Code[Pc++] = k_GREATEREQUAL; break;
+            case EQ: a_Code[Pc++] = k_EQU; break;
+            case NQ: a_Code[Pc++] = k_NEQU; break;
+            case LE: a_Code[Pc++] = k_LE; break;
+            case LQ: a_Code[Pc++] = k_LEEQU; break;
+            case GR: a_Code[Pc++] = k_GR; break;
+            case GQ: a_Code[Pc++] = k_GREQU; break;
             default: error("unknown operator '%u'", op); break;
             }
         }
@@ -653,7 +665,7 @@ static uint8_t compile_add_expr(void) {
             if(type1 == NUM) {
               a_Code[Pc++] = k_ADD;
             } else {
-              a_Code[Pc++] = k_SADD;
+              a_Code[Pc++] = k_S_ADD;
             }
         } else {
             if(type1 == NUM) {
@@ -865,6 +877,12 @@ static uint8_t compile_factor(void) {
         a_Code[Pc++] = k_SPC;
         type = STR;
         break;
+    case STACK: // Nothing to do. Value is already on the stack
+        match(STACK);
+        match('(');
+        match(')');
+        type = NUM;
+        break;
     default:
         error("unknown factor '%u'", tok);
         break;
@@ -949,3 +967,14 @@ static void error(char *fmt, ...) {
     p_pos = p_next;
     p_pos[0] = '\0';
 }
+
+static char *token(uint8_t tok) {
+    static char s[3];
+    if(tok >= LET && tok <= STACK) {
+        return Keywords[tok - LET];
+    } else {
+        s[0] = tok;
+        s[1] = '\0';
+        return s;
+    }
+} 

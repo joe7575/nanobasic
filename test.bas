@@ -49,3 +49,7 @@ for i = 0 to 10
   print i,
 next i
 return
+
+on_can:
+print "on_can"
+return

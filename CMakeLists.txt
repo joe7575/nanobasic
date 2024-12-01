@@ -7,7 +7,7 @@ add_executable(joesbasic
     ./jbi_scanner.c
     ./jbi_compiler.c
     ./jbi_runtime.c
-    ./jbi_string.c
+    ./jbi_memory.c
     ./main.c
     ./jbi.h
     ./jbi_int.h

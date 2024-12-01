@@ -26,12 +26,12 @@ k_ADD           = 8
 k_SUB           = 9
 k_MUL           = 10
 k_DIV           = 11
-k_EQUAL         = 12
-k_NEQUAL        = 13
-k_LESS          = 14
-k_LESSEQUAL     = 15
-k_GREATER       = 16
-k_GREATEREQUAL  = 17
+k_EQU         = 12
+k_NEQU        = 13
+k_LE          = 14
+k_LEEQU     = 15
+k_GR       = 16
+k_GREQU  = 17
 k_GOTO          = 18
 k_GOSUB         = 19
 k_RETURN        = 20
@@ -170,7 +170,7 @@ class Compiler(object):
     
     def compile_if(self, tokens):
         tokens = self.compile_expression(tokens)
-        relop = {"=": k_EQUAL, "<>": k_NEQUAL, "<": k_LESS, "<=": k_LESSEQUAL, ">": k_GREATER, ">=": k_GREATEREQUAL}[tokens[0]]
+        relop = {"=": k_EQU, "<>": k_NEQU, "<": k_LE, "<=": k_LEEQU, ">": k_GR, ">=": k_GREQU}[tokens[0]]
         tokens = self.compile_expression(tokens[1:])
         self.programm.append(relop)
         self.programm.append(k_IF)
