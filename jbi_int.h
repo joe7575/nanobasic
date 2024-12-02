@@ -23,12 +23,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define k_VERSION       0x01
 
 #define k_STACK_SIZE        (16)
-#define k_BUFF_SIZE         (128)
-#define k_NUM_BUFF          (2)
-#define k_NUM_VARS          (64)
+#define k_NUM_VARS          (255)
 #define k_MEM_BLOCK_SIZE    (16)    // Must be a multiple of 4 (real size is MIN_BLOCK_SIZE - 1)
 #define k_MEM_FREE_TAG      (0)     // Also used for number of blocks
-#define k_MEM_HEAP_SIZE     (1024)
+#define k_MEM_HEAP_SIZE     (1024 * 16) // 16k
 
 #define ACS8(x)   *(uint8_t*)&(x)
 #define ACS16(x)  *(uint16_t*)&(x)
@@ -47,39 +45,34 @@ enum {
     k_BYTENUM,            // 07 xx (push const value)     
     k_VAR,                // 08 idx (push variable)
     k_LET,                // 09 idx (pop variable)
-    k_ADD,                // 0A (add two values from stack)
-    k_SUB,                // 0B (sub ftwo values rom stack)
-    k_MUL,                // 0C (mul two values from stack)
-    k_DIV,                // 0D (div two values from stack)
-    k_MOD,                // 0E (mod two values from stack)
-    k_AND,                // 0F (pop two values from stack)
-    k_OR,                 // 10 (pop two values from stack)
-    k_NOT,                // 11 (pop one value from stack)
-    k_EQU,                // 12 (compare two values from stack)
-    k_NEQU,               // 13 (compare two values from stack)
-    k_LE,                 // 14 (compare two values from stack)     
-    k_LEEQU,              // 15 (compare two values from stack) 
-    k_GR,                 // 16 (compare two values from stack)      
-    k_GREQU,              // 17 (compare two values from stack)
-    k_GOTO,               // 18 (16 bit programm address)
-    k_GOSUB,              // 19 (16 bit programm address)
-    k_RETURN,             // 1A (pop return address)
-    k_NEXT,               // 1B (16 bit programm address), (variable)
-    k_IF,                 // 1C xx xx (pop val, END address)
-    k_FUNC,               // 1D xx (function call)
-    k_BUFF_S1,            // 1E xx (buffer: set one byte)
-    k_BUFF_G1,            // 1F xx (buffer: get one byte)
-    k_BUFF_S2,            // 20 xx (buffer: set one short)
-    k_BUFF_G2,            // 21 xx (buffer: get one short)
-    k_BUFF_S4,            // 22 xx (buffer: set one long)
-    k_BUFF_G4,            // 23 xx (buffer: get one long)
-    k_S_ADD,              // 24 (add two strings from stack)
-    k_S_EQU,              // 25 (compare two values from stack)
-    k_S_NEQU,             // 26 (compare two values from stack)
-    k_S_LE,               // 27 (compare two values from stack)     
-    k_S_LEEQU,            // 28 (compare two values from stack) 
-    k_S_GR,               // 29 (compare two values from stack)      
-    k_S_GREQU,            // 2A (compare two values from stack)
+    k_DIM,                // 0A idx xx (pop variable, pop size)
+    k_ADD,                // 0B (add two values from stack)
+    k_SUB,                // 0C (sub ftwo values rom stack)
+    k_MUL,                // 0D (mul two values from stack)
+    k_DIV,                // 0E (div two values from stack)
+    k_MOD,                // 0F (mod two values from stack)
+    k_AND,                // 10 (pop two values from stack)
+    k_OR,                 // 11 (pop two values from stack)
+    k_NOT,                // 12 (pop one value from stack)
+    k_EQU,                // 13 (compare two values from stack)
+    k_NEQU,               // 14 (compare two values from stack)
+    k_LE,                 // 15 (compare two values from stack)     
+    k_LEEQU,              // 16 (compare two values from stack) 
+    k_GR,                 // 17 (compare two values from stack)      
+    k_GREQU,              // 18 (compare two values from stack)
+    k_GOTO,               // 19 (16 bit programm address)
+    k_GOSUB,              // 1A (16 bit programm address)
+    k_RETURN,             // 1B (pop return address)
+    k_NEXT,               // 1C (16 bit programm address), (variable)
+    k_IF,                 // 1D xx xx (pop val, END address)
+    k_FUNC,               // 1E xx (function call)
+    k_S_ADD,              // 1F (add two strings from stack)
+    k_S_EQU,              // 20 (compare two values from stack)
+    k_S_NEQU,             // 21 (compare two values from stack)
+    k_S_LE,               // 22 (compare two values from stack)     
+    k_S_LEEQU,            // 23 (compare two values from stack) 
+    k_S_GR,               // 24 (compare two values from stack)      
+    k_S_GREQU,            // 25 (compare two values from stack)
 };
 
 // Function call definitions (in addition to JBI_CMD,... return values)
@@ -91,6 +84,12 @@ enum {
     k_VAL,                // 14 (val)
     k_STRS,               // 15 (str$)
     k_SPC,                // 16 (spc)
+    k_SET1,               // 17 xx (array: set one byte)
+    k_GET1,               // 18 xx (array: get one byte)
+    k_SET2,               // 19 xx (array: set one short)
+    k_GET2,               // 1A xx (array: get one short)
+    k_SET4,               // 1B xx (array: set one long)
+    k_GET4,               // 1C xx (array: get one long)
 };
 
 #ifdef DEBUG
@@ -105,6 +104,7 @@ char *Opcodes[] = {
     "BYTENUM",
     "VAR",
     "LET",
+    "DIM",
     "ADD",
     "SUB",
     "MUL",
@@ -125,12 +125,12 @@ char *Opcodes[] = {
     "NEXT",
     "IF",
     "FUNC",
-    "BUFF_S1",
-    "BUFF_G1",
-    "BUFF_S2",
-    "BUFF_G2",
-    "BUFF_S4",
-    "BUFF_G4",
+    "SET1",
+    "GET1",
+    "SET2",
+    "GET2",
+    "SET4",
+    "GET4",
 };
 #endif
 
@@ -140,7 +140,6 @@ typedef struct {
     uint8_t  csp;  // Call stack pointer
     uint32_t datastack[k_STACK_SIZE];
     uint32_t callstack[k_STACK_SIZE];
-    uint8_t  buffer[k_NUM_BUFF][k_BUFF_SIZE];
     uint32_t variables[k_NUM_VARS];
     uint16_t str_start_addr;
     uint8_t  compensation;  // To force the alignment of buffers to 4 bytes

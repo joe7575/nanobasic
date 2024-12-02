@@ -52,9 +52,8 @@ int main(int argc, char* argv[]) {
     uint8_t num_vars;
     uint16_t res = JBI_BUSY;
     uint32_t cycles = 0;
-    uint8_t evt1, evt2, buf1, buf2;
-    uint32_t *p1, *p2;
-    uint8_t  *p3, *p4;
+    uint8_t buf1;
+    uint8_t *pArr;
     uint16_t on_can;
     
     if (argc != 2) {
@@ -64,28 +63,27 @@ int main(int argc, char* argv[]) {
     printf("Joes Basic Compiler V1.0\n");
 
     jbi_init();
-    evt1 = jbi_add_variable("evt1");
-    evt2 = jbi_add_variable("evt2");
-    buf1 = jbi_add_buffer("buf1", 0);
-    buf2 = jbi_add_buffer("buf2", 1);
     uint8_t *code = jbi_compiler("../temp.bas", &size, &num_vars);
 
     if(code == NULL) {
         return 1;
     }
-    jbi_output_symbol_table();
-    on_can = jbi_get_label_address("on_can");
+    //jbi_output_symbol_table();
+    //on_can = jbi_get_label_address("on_can");
+    on_can = jbi_get_label_address("200");
+    buf1 = jbi_get_var_num("buf1");
 
     printf("\nJoes Basic Interpreter V1.0\n");
     void *instance = jbi_create(num_vars, code);
     // test_memory(instance);
     // return 0;
-    jbi_dump_code(code, size);
-    p1 = jbi_get_variable_address(instance, evt1);
-    p2 = jbi_get_variable_address(instance, evt2);
-    p3 = jbi_get_buffer_address(instance, buf1);
-    p4 = jbi_get_buffer_address(instance, buf2);
-    
+    //jbi_dump_code(code, size);
+    pArr = jbi_get_arr_address(instance, buf1);
+    pArr[0] = 55;
+    pArr[1] = 56;
+    pArr[2] = 57;
+    pArr[3] = 58;
+   
     while(res >= JBI_BUSY) {
         // A simple for loop "for i = 1 to 100: print i: next i" 
         // needs ~500 ticks or 1 second (50 cycles per 100 ms)
@@ -93,14 +91,11 @@ int main(int argc, char* argv[]) {
         cycles += 50;
         msleep(100);
         if(res == JBI_CMD) {
-            uint32_t num = jbi_pop_variable(instance);
-            printf("Send command to %u: %02X %02X %02X %02X\n", num, p3[0], p3[1], p3[2], p3[3]);
-        } else if(res == JBI_EVENT) {
-            uint32_t evt = jbi_pop_variable(instance);
-            uint32_t num = jbi_pop_variable(instance);
-            printf("Send event to %u: %u\n", num, evt);
-        } else {
-            jbi_call_1(instance, on_can, 12345);
+            uint32_t num = jbi_pop_var(instance);
+            printf("Send command to %u: %02X %02X %02X %02X\n", num, pArr[0], pArr[1], pArr[2], pArr[3]);
+         } else {
+             jbi_push_var(instance, 12345);
+            jbi_set_pc(instance, on_can);
         }
     }
     jbi_destroy(instance);

@@ -31,32 +31,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 //#define DEBUG
 
 #define MAX_MEM_LEN     256
-#define MAX_NUM_SYM     256
-#define MAX_SYM_LEN     9
-#define MAX_CODE_LEN    1024
+#define MAX_NUM_SYM     4000 // needed if line numbers are used
+#define MAX_SYM_LEN     8
+#define MAX_CODE_LEN    32000
 #define MAX_FOR_LOOPS   8
 
 #define MIN(a,b)        ((a) < (b) ? (a) : (b))
 
 // Token types
 enum {
-    LET = 128, FOR, TO, STEP, NEXT, IF, THEN, PRINT, GOTO, GOSUB, RETURN, END, REM, AND, OR, NOT,
+    LET = 128, DIM, FOR, TO, STEP, NEXT, IF, THEN, PRINT, GOTO, GOSUB, RETURN, END, REM, AND, OR, NOT,
     NUM,  // 1234
     STR,  // "Hello"
     ID,   // var1
     SID,  // A$
     EQ, NQ, LE, LQ, GR, GQ,
-    CMD, EVENT, BUFF,
+    CMD, ARR, // 155, 156
     LABEL,
+    SET1, SET2, SET4, GET1, GET2, GET4,
     LEFTS, RIGHTS, MIDS, LEN, VAL, STRS, SPC, STACK,
 };
 
 // Keywords
 static char *Keywords[] = {
-    "let", "for", "to", "step", "next", "if", "then", "print", "goto", "gosub", "return", "end", "rem", "and", "or", "not",
+    "let", "dim", "for", "to", "step", "next", "if", "then", "print", "goto", "gosub", "return", "end", "rem", "and", "or", "not",
     "number", "string", "variable", "string variable", "=", "<>", "<", "<=", ">", ">=",
-    "cmd", "event", "buffer",
+    "cmd", "array",
     "label",
+    "set1", "set2", "set4", "get1", "get2", "get4",
     "left$", "right$", "mid$", "len", "val", "str$", "spc", "stack",
 };
 
@@ -64,7 +66,8 @@ static char *Keywords[] = {
 typedef struct {
     char name[MAX_SYM_LEN];
     uint8_t  type;   // ID, NUM, IF,...
-    uint32_t value;  // Variable index (0..n) or label address
+    uint8_t  res;    // Reserved for future use
+    uint16_t value;  // Variable index (0..n) or label address
 } sym_t;
 
 static sym_t a_Symbol[MAX_NUM_SYM] = {0};
@@ -100,6 +103,7 @@ static void compile_goto(void);
 static void compile_gosub(void);
 static void compile_return(void);
 static void compile_var(void);
+static void compile_dim(void);
 static void remark(void);
 static void compile_comment(void);
 static void compile_print(void);
@@ -113,11 +117,16 @@ static uint8_t compile_term(void);
 static uint8_t compile_factor(void);
 static void compile_end(void);
 static void compile_cmd(void);
-static void compile_event(void);
+static void compile_set1(void);
+static void compile_set2(void);
+static void compile_set4(void);
 static uint8_t compile_width(bool bSet);
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
+static uint16_t sym_get(char *id);
 static void error(char *fmt, ...);
 static char *token(uint8_t tok);
+static void compile_set(uint8_t instr);
+static void compile_get(uint8_t tok, uint8_t instr);
 
 /*************************************************************************************************
 ** API functions
@@ -134,6 +143,7 @@ void jbi_dump_code(uint8_t *code, uint16_t size) {
 void jbi_init(void) {
     // Add keywords
     sym_add("let", 0, LET);
+    sym_add("dim", 0, DIM);
     sym_add("for", 0, FOR);
     sym_add("to", 0, TO);
     sym_add("step", 0, STEP);
@@ -150,7 +160,12 @@ void jbi_init(void) {
     sym_add("or", 0, OR);
     sym_add("not", 0, NOT);
     sym_add("cmd", 0, CMD);
-    sym_add("event", 0, EVENT);
+    sym_add("set1", 0, SET1);
+    sym_add("set2", 0, SET2);
+    sym_add("set4", 0, SET4);
+    sym_add("get1", 0, GET1);
+    sym_add("get2", 0, GET2);
+    sym_add("get4", 0, GET4);
     sym_add("left$", 0, LEFTS);
     sym_add("right$", 0, RIGHTS);
     sym_add("mid$", 0, MIDS);
@@ -165,17 +180,6 @@ void jbi_init(void) {
     a_Code[Pc++] = k_TAG;
     a_Code[Pc++] = k_VERSION;
     PcStart = Pc;
-}
-
-uint8_t jbi_add_variable(char *name) {
-    sym_add(name, CurrVarIdx, ID);
-    return CurrVarIdx - 1;
-}
-
-uint8_t jbi_add_buffer(char *name, uint8_t idx) {
-    sym_add(name, idx, BUFF);
-    CurrVarIdx--;
-    return idx;
 }
 
 uint8_t *jbi_compiler(char *filename, uint16_t *p_len, uint8_t *p_num_vars) {
@@ -225,6 +229,16 @@ void jbi_output_symbol_table(void) {
 uint16_t jbi_get_label_address(char *name) {
     for(uint16_t i = StartOfVars; i < MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type == LABEL && strcmp(a_Symbol[i].name, name) == 0)
+        {
+            return a_Symbol[i].value;
+        }
+    }
+    return 0;
+}   
+
+uint8_t jbi_get_var_num(char *name) {
+    for(uint16_t i = StartOfVars; i < MAX_NUM_SYM; i++) {
+        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL && strcmp(a_Symbol[i].name, name) == 0)
         {
             return a_Symbol[i].value;
         }
@@ -328,13 +342,20 @@ static void label(void) {
     a_Symbol[SymIdx].type = LABEL;
     NextTok = LABEL;
     CurrVarIdx--;
+  } else {
+    error("label expected instead of '%s'", a_Buff);
   }
   match(LABEL);
 }
 
 static void compile_line(void) {
     uint8_t tok = lookahead();
-    if(tok == ID || tok == LABEL) {
+    if(tok == NUM) {
+        match(NUM);
+        Linenum = Value;
+        sym_add(a_Buff, Pc, LABEL);
+        tok = lookahead();
+    } else if(tok == ID || tok == LABEL) {
         uint16_t idx = SymIdx;
         label();
         tok = lookahead();
@@ -360,6 +381,7 @@ static void compile_stmt(void) {
     case FOR: compile_for(); break;
     case IF: compile_if(); break;
     case LET: compile_var(); break;
+    case DIM: compile_dim(); break;
     case REM: remark(); break;
     case GOTO: compile_goto(); break;
     case GOSUB: compile_gosub(); break;
@@ -368,7 +390,9 @@ static void compile_stmt(void) {
     case NEXT: compile_next(); break;
     case END: compile_end(); break;
     case CMD: compile_cmd(); break;
-    case EVENT: compile_event(); break;
+    case SET1: compile_set1(); break;
+    case SET2: compile_set2(); break;
+    case SET4: compile_set4(); break;    
     default: error("unknown statement '%s'", token(tok)); break;
     }
 }
@@ -437,8 +461,18 @@ static void compile_if(void) {
 }
 
 static void compile_goto(void) {
-    label();
-    uint16_t addr = a_Symbol[SymIdx].value;
+    uint8_t tok = lookahead();
+    uint16_t addr;
+    if(tok == LABEL) {
+        label();
+        addr = a_Symbol[SymIdx].value;
+    }else if(tok == NUM) {
+        match(NUM);
+        addr = sym_get(a_Buff);
+    } else {
+        error("label or number expected instead of '%s'", a_Buff);
+        return;
+    }
     a_Code[Pc++] = k_GOTO;
     a_Code[Pc++] = addr & 0xFF;
     a_Code[Pc++] = (addr >> 8) & 0xFF;
@@ -471,7 +505,7 @@ static void compile_var(void) {
         // Var[value] = pop()
         a_Code[Pc++] = k_LET;
         a_Code[Pc++] = a_Symbol[idx].value;
-    } else if(tok == ID) { // let a = expression
+    } else if(tok == ID || tok == ARR) { // let a = expression
         match('=');
         type = compile_expression();
         if(type != NUM) {
@@ -481,22 +515,25 @@ static void compile_var(void) {
         // Var[value] = pop()
         a_Code[Pc++] = k_LET;
         a_Code[Pc++] = a_Symbol[idx].value;
-    } else if(tok == BUFF) { // let rx[0] = 1
-        match('[');
-        type = compile_expression();
+    } else {
+        error("unknown variable type '%s'", token(tok));
+    }
+}
+
+static void compile_dim(void) {
+    uint8_t tok = next();
+    uint8_t type;
+    if(tok == ID || tok == ARR) {
+        uint16_t idx = SymIdx;
+        a_Symbol[idx].type = ARR;
+        match('(');
+        type = compile_expression();        
         if(type != NUM) {
             error("type mismatch");
             return;
         }
-        uint8_t instr = compile_width(1);
-        match(']');
-        match('=');
-        type = compile_expression();
-        if(type != NUM) {
-            error("type mismatch");
-            return;
-        }
-        a_Code[Pc++] = instr;
+        match(')');
+        a_Code[Pc++] = k_DIM;
         a_Code[Pc++] = a_Symbol[idx].value;
     } else {
         error("unknown variable type '%u'", tok);
@@ -528,7 +565,7 @@ static void compile_print(void) {
             type = compile_expression();
             if(type == NUM) {
                 a_Code[Pc++] = k_PRINTV;
-            } else if(type == BUFF) {
+            } else if(type == ARR) {
                 a_Code[Pc++] = k_PRINTV;
             } else if(type == STR) {
                 a_Code[Pc++] = k_PRINTS;
@@ -704,6 +741,7 @@ static uint8_t compile_term(void) {
 
 static uint8_t compile_factor(void) {
     uint8_t type = 0;
+    uint8_t idx;
     uint8_t tok = lookahead();
     switch(tok) {
     case '(':
@@ -734,16 +772,23 @@ static uint8_t compile_factor(void) {
         a_Code[Pc++] = a_Symbol[SymIdx].value;
         type = NUM;
         break;
-    case BUFF: // buffer, like rx[0]
-        uint8_t val = a_Symbol[SymIdx].value;
-        match(BUFF);
-        match('[');
-        compile_expression();
-        uint8_t instr = compile_width(0);
-        match(']');
-        a_Code[Pc++] = instr;
-        a_Code[Pc++] = val;
-        type = BUFF;
+    case ARR: // variable, like var1
+        match(ARR);
+        a_Code[Pc++] = k_VAR;
+        a_Code[Pc++] = a_Symbol[SymIdx].value;
+        type = ARR;
+        break;
+    case GET1: // get1 function
+        compile_get(GET1, k_GET1);
+        type = NUM;
+        break;
+    case GET2: // get2 function
+        compile_get(GET2, k_GET2);
+        type = NUM;
+        break;
+    case GET4: // get4 function
+        compile_get(GET4, k_GET4);
+        type = NUM;
         break;
     case STR: // string, like "Hello"
         match(STR);
@@ -902,14 +947,16 @@ static void compile_cmd(void) {
     a_Code[Pc++] = JBI_CMD;
 }
 
-static void compile_event(void) {
-    match('(');
-    compile_expression();
-    match(',');
-    compile_expression();
-    match(')');
-    a_Code[Pc++] = k_FUNC;
-    a_Code[Pc++] = JBI_EVENT;
+static void compile_set1(void) {
+    compile_set(k_SET1);
+}
+
+static void compile_set2(void) {
+    compile_set(k_SET2);
+}
+
+static void compile_set4(void) {
+    compile_set(k_SET4);
 }
 
 /*
@@ -924,27 +971,32 @@ static uint8_t compile_width(bool bSet) {
         if(tok == NUM) {
           uint8_t val = Value;
           match(NUM);
-          if(val == 1) return bSet ? k_BUFF_S1 : k_BUFF_G1;
-          if(val == 2) return bSet ? k_BUFF_S2 : k_BUFF_G2;
-          if(val == 4) return bSet ? k_BUFF_S4 : k_BUFF_G4;
+          if(val == 1) return bSet ? k_SET1 : k_GET1;
+          if(val == 2) return bSet ? k_SET2 : k_GET2;
+          if(val == 4) return bSet ? k_SET4 : k_GET4;
           error("unknown width '%u'", val);
           return 0;
         }
         error("number expected");
     }
-    return bSet ? k_BUFF_S1 : k_BUFF_G1;
+    return bSet ? k_SET1 : k_GET1;
 }
 
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
+    uint16_t start = 0;
     // Search for existing symbol
     for(uint16_t i = 0; i < MAX_NUM_SYM; i++) {
         if(strcmp(a_Symbol[i].name, id) == 0) {
-          return i;
+            return i;
+        }
+        if(a_Symbol[i].name[0] == '\0') {
+            start = i;
+            break;
         }
     }
 
     // Add new symbol
-    for(uint16_t i = 0; i < MAX_NUM_SYM; i++) {
+    for(uint16_t i = start; i < MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] == '\0') {
             memcpy(a_Symbol[i].name, id, MIN(strlen(id), MAX_SYM_LEN));
             a_Symbol[i].value = val;
@@ -954,6 +1006,19 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
         }
     }
     return -1;
+}
+
+static uint16_t sym_get(char *id) {
+    // Search for existing symbol
+    for(uint16_t i = 0; i < MAX_NUM_SYM; i++) {
+        if(strcmp(a_Symbol[i].name, id) == 0) {
+            return a_Symbol[i].value;
+        }
+        if(a_Symbol[i].name[0] == '\0') {
+            break;
+        }
+    }
+    return 0;
 }
 
 static void error(char *fmt, ...) {
@@ -978,3 +1043,42 @@ static char *token(uint8_t tok) {
         return s;
     }
 } 
+
+static void compile_set(uint8_t instr) {
+    uint8_t idx;
+    match('(');
+    match(ARR);
+    idx = SymIdx;
+    match(',');
+    if(compile_expression() != NUM) {
+        error("type mismatch");
+        return;
+    }
+    match(',');
+    if(compile_expression() != NUM) {
+        error("type mismatch");
+        return;
+    }
+    match(')');
+    a_Code[Pc++] = k_FUNC;
+    a_Code[Pc++] = instr;
+    a_Code[Pc++] = a_Symbol[idx].value;
+}
+
+static void compile_get(uint8_t tok, uint8_t instr) {
+    uint8_t idx, type;
+    match(tok);
+    match('(');
+    match(ARR);
+    idx = SymIdx;
+    match(',');
+    type = compile_expression();
+    if(type != NUM) {
+        error("type mismatch");
+        return;
+    }
+    match(')');
+    a_Code[Pc++] = k_FUNC;
+    a_Code[Pc++] = instr;
+    a_Code[Pc++] = a_Symbol[idx].value;
+}

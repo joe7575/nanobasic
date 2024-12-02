@@ -45,14 +45,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define STR(x) (x >= 0x8000 ? (char*)&vm->heap[x & 0x7FFF] : (char*)&p_programm[x])
 
-#define CHAR(x) (((x) - 0x30) & 0x1F)
-
 /***************************************************************************************************
 **    static function-prototypes
 ***************************************************************************************************/
-static uint32_t peek(uint32_t addr);
-
-static uint8_t aTestBuffer[256] = {0}; // TODO
 
 /***************************************************************************************************
 **    global functions
@@ -67,49 +62,36 @@ void *jbi_create(uint8_t num_vars, uint8_t* p_programm) {
     return vm;
 }
 
-uint32_t *jbi_get_variable_address(void *pv_vm, uint8_t var) {
+uint32_t *jbi_get_var_address(void *pv_vm, uint8_t var) {
     t_VM *vm = pv_vm;
     return &vm->variables[var];
 }
 
-uint8_t *jbi_get_buffer_address(void *pv_vm, uint8_t idx) {
+uint8_t *jbi_get_arr_address(void *pv_vm, uint8_t var) {
     t_VM *vm = pv_vm;
-    return vm->buffer[idx];
+    uint_least16_t addr = vm->variables[var];
+    return &vm->heap[(addr & 0x7FFF) + 1];
 }
 
-uint32_t jbi_pop_variable(void *pv_vm) {
+uint32_t jbi_pop_var(void *pv_vm) {
     t_VM *vm = pv_vm;
     return DPOP();
 }
 
-void jbi_call_0(void * pv_vm, uint16_t addr) {
+void jbi_push_var(void *pv_vm, uint32_t value) {
     t_VM *vm = pv_vm;
-    CPUSH(vm->pc);
-    vm->pc = addr;
+    DPUSH(value);
 }
 
-void jbi_call_1(void * pv_vm, uint16_t addr, uint32_t param1) {
+uint8_t jbi_stack_depth(void *pv_vm) {
     t_VM *vm = pv_vm;
-    CPUSH(vm->pc);
-    vm->pc = addr;
-    DPUSH(param1);
+    return vm->dsp;
 }
 
-void jbi_call_2(void * pv_vm, uint16_t addr, uint32_t param1, uint32_t param2){
+void jbi_set_pc(void * pv_vm, uint16_t addr) {
     t_VM *vm = pv_vm;
     CPUSH(vm->pc);
     vm->pc = addr;
-    DPUSH(param1);
-    DPUSH(param2);
-}
-
-void jbi_call_3(void * pv_vm, uint16_t addr, uint32_t param1, uint32_t param2, uint32_t param3){
-    t_VM *vm = pv_vm;
-    CPUSH(vm->pc);
-    vm->pc = addr;
-    DPUSH(param1);
-    DPUSH(param2);
-    DPUSH(param3);
 }
 
 /***************************************************************************************************
@@ -134,7 +116,7 @@ void jbi_call_3(void * pv_vm, uint16_t addr, uint32_t param1, uint32_t param2, u
 uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles) {
     uint32_t tmp1, tmp2;
     uint16_t idx;
-    uint16_t addr;
+    uint16_t addr, size;
     uint8_t  var;
     uint8_t  *ptr;
     t_VM *vm = pv_vm;
@@ -186,6 +168,17 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
         case k_LET:
             var = p_programm[vm->pc + 1];
             vm->variables[var] = DPOP();
+            vm->pc += 2;
+            break;
+        case k_DIM:
+            var = p_programm[vm->pc + 1];
+            size = DPOP();
+            addr = jbi_mem_alloc(vm, size);
+            if(addr == 0) {
+                PRINTF("Error: Out of memory\n");
+                return JBI_ERROR;
+            }
+            vm->variables[var] = addr;
             vm->pc += 2;
             break;
         case k_ADD:
@@ -313,7 +306,6 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
         case k_FUNC:
             switch(p_programm[vm->pc + 1]) {
             case JBI_CMD: vm->pc += 2; return JBI_CMD;
-            case JBI_EVENT: vm->pc += 2; return JBI_EVENT;
             case k_LEFTS:
                 tmp2 = DPOP();  // number of characters
                 tmp1 = DPOP();  // string address
@@ -372,50 +364,56 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
                 DPUSH(addr);
                 vm->pc += 2;
                 break;
+            case k_SET1:
+                var = p_programm[vm->pc + 2];
+                addr = vm->variables[var] & 0x7FFF;
+                tmp1 = DPOP();
+                tmp2 = DPOP();
+                ACS8(vm->heap[addr + tmp2]) = tmp1;
+                vm->pc += 3;
+                break;
+            case k_GET1:
+                var = p_programm[vm->pc + 2];
+                addr = vm->variables[var] & 0x7FFF;
+                tmp1 = DPOP();
+                DPUSH(ACS8(vm->heap[addr + tmp1]));
+                vm->pc += 3;
+                break;
+            case k_SET2:
+                var = p_programm[vm->pc + 2];
+                addr = vm->variables[var] & 0x7FFF;
+                tmp1 = DPOP();
+                tmp2 = DPOP();
+                ACS16(vm->heap[addr + tmp2]) = tmp1;
+                vm->pc += 3;
+                break;
+            case k_GET2:
+                var = p_programm[vm->pc + 2];
+                addr = vm->variables[var] & 0x7FFF;
+                tmp1 = DPOP();
+                DPUSH(ACS16(vm->heap[addr + tmp1]));
+                vm->pc += 3;
+                break;
+            case k_SET4:
+                var = p_programm[vm->pc + 2];
+                addr = vm->variables[var] & 0x7FFF;
+                tmp1 = DPOP();
+                tmp2 = DPOP();
+                ACS32(vm->heap[addr + tmp2]) = tmp1;
+                vm->pc += 3;
+                break;
+            case k_GET4:
+                var = p_programm[vm->pc + 2];
+                addr = vm->variables[var] & 0x7FFF;
+                tmp1 = DPOP();
+                DPUSH(ACS32(vm->heap[addr + tmp1]));
+                vm->pc += 3;
+                break;
             default:
                 PRINTF("Error: unknown function '%u'\n", p_programm[vm->pc + 1]);
                 vm->pc += 2;
                 break;
             }
-            break;
-        case k_BUFF_S1:
-            var = p_programm[vm->pc + 1];
-            ptr = vm->buffer[var];
-            tmp1 = DPOP();
-            ACS8(ptr[DPOP()]) = tmp1;
-            vm->pc += 2;
-            break;
-        case k_BUFF_G1:
-            var = p_programm[vm->pc + 1];
-            ptr = vm->buffer[var];
-            DPUSH(ACS8(ptr[DPOP()]));
-            vm->pc += 2;
-            break;
-        case k_BUFF_S2:
-            var = p_programm[vm->pc + 1];
-            ptr = vm->buffer[var];
-            tmp1 = DPOP();
-            ACS16(ptr[DPOP()]) = tmp1;
-            vm->pc += 2;
-            break;
-        case k_BUFF_G2:
-            var = p_programm[vm->pc + 1];
-            ptr = vm->buffer[var];
-            DPUSH(ACS16(ptr[DPOP()]));
-            vm->pc += 2;
-            break;
-        case k_BUFF_S4:
-            var = p_programm[vm->pc + 1];
-            ptr = vm->buffer[var];
-            tmp1 = DPOP();
-            ACS32(ptr[DPOP()]) = tmp1;
-            vm->pc += 2;
-            break;
-        case k_BUFF_G4:
-            var = p_programm[vm->pc + 1];
-            ptr = vm->buffer[var];
-            DPUSH(ACS32(ptr[DPOP()]));
-            vm->pc += 2;
             break;
         case k_S_ADD:
             tmp2 = DPOP();
@@ -478,41 +476,5 @@ void jbi_destroy(void * pv_vm) {
 }
 
 /***************************************************************************************************
-  Function:
-    jbi_Hex2Bin
-
-  Description:
-    Convert the HEX string to a binary string.
-    The HEX string must have an even number of characters and the characters A - F must
-    be in upper case.
-
-  Parameters:
-    p_in  (IN)  - pointer to the HEX string
-    len (IN)  - length of the HEX string in bytes
-    pout (OUT) - pointer to the binary string
-
-  Return value:
-    -
-
-***************************************************************************************************/
-void jbi_Hex2Bin(const char* p_in, uint16_t len, uint8_t* pout) {
-    static const unsigned char TBL[] = {
-      0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   0,   0,   0,   0,   0,
-      0,   0,  10,  11,  12,  13,  14,  15,   0,   0,   0,   0,   0,   0,   0,
-    };
-
-    const char* end = p_in + len;
-
-    while (p_in < end) {
-      *(pout++) = TBL[CHAR(*p_in)] << 4 | TBL[CHAR(*(p_in + 1))];
-      p_in += 2;
-    }
-}
-
-
-/***************************************************************************************************
 * Static functions
 ***************************************************************************************************/
-static uint32_t peek(uint32_t addr) {
-  return addr * 2;
-}
