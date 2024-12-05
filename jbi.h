@@ -26,7 +26,8 @@ enum {
   JBI_END = 0,  // programm end reached
   JBI_ERROR,    // error in programm
   JBI_BUSY,     // programm still willing to run
-  JBI_CMD,   // send command (buffer)
+  JBI_CMD,      // send command (buffer)
+  JBI_BREAK,    // break command
 };
 
 void jbi_init(void);
@@ -38,7 +39,7 @@ void jbi_destroy(void * pv_vm);
 void jbi_dump_code(uint8_t *code, uint16_t size);
 void jbi_output_symbol_table(void);
 
-uint8_t jbi_get_var_num(char *name);
+uint16_t jbi_get_var_num(char *name);
 uint16_t jbi_get_label_address(char *name);
 uint32_t *jbi_get_var_address(void *pv_vm, uint8_t var);
 uint8_t *jbi_get_arr_address(void *pv_vm, uint8_t idx);

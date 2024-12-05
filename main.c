@@ -46,14 +46,13 @@ int msleep(uint32_t msec)
     return res;
 }
 
-
 int main(int argc, char* argv[]) {
     uint16_t size;
     uint8_t num_vars;
     uint16_t res = JBI_BUSY;
     uint32_t cycles = 0;
-    uint8_t buf1;
-    uint8_t *pArr;
+    uint16_t buf1;
+    uint8_t *pArr = NULL;
     uint16_t on_can;
     
     if (argc != 2) {
@@ -63,7 +62,9 @@ int main(int argc, char* argv[]) {
     printf("Joes Basic Compiler V1.0\n");
 
     jbi_init();
-    uint8_t *code = jbi_compiler("../temp.bas", &size, &num_vars);
+    //uint8_t *code = jbi_compiler("../temp.bas", &size, &num_vars);
+    //uint8_t *code = jbi_compiler("../lineno.bas", &size, &num_vars);
+    uint8_t *code = jbi_compiler("../test.bas", &size, &num_vars);
 
     if(code == NULL) {
         return 1;
@@ -75,15 +76,10 @@ int main(int argc, char* argv[]) {
 
     printf("\nJoes Basic Interpreter V1.0\n");
     void *instance = jbi_create(num_vars, code);
-    // test_memory(instance);
-    // return 0;
-    //jbi_dump_code(code, size);
-    pArr = jbi_get_arr_address(instance, buf1);
-    pArr[0] = 55;
-    pArr[1] = 56;
-    pArr[2] = 57;
-    pArr[3] = 58;
-   
+    //est_memory(instance);
+    //return 0;
+    jbi_dump_code(code, size);
+
     while(res >= JBI_BUSY) {
         // A simple for loop "for i = 1 to 100: print i: next i" 
         // needs ~500 ticks or 1 second (50 cycles per 100 ms)
@@ -91,10 +87,13 @@ int main(int argc, char* argv[]) {
         cycles += 50;
         msleep(100);
         if(res == JBI_CMD) {
-            uint32_t num = jbi_pop_var(instance);
-            printf("Send command to %u: %02X %02X %02X %02X\n", num, pArr[0], pArr[1], pArr[2], pArr[3]);
-         } else {
-             jbi_push_var(instance, 12345);
+            pArr = jbi_get_arr_address(instance, buf1);
+            if(pArr != NULL) {
+                uint32_t num = jbi_pop_var(instance);
+                printf("Send command to %u: %02X %02X %02X %02X\n", num, pArr[0], pArr[1], pArr[2], pArr[3]);
+            }
+        } else if(on_can > 0){
+            jbi_push_var(instance, 12345);
             jbi_set_pc(instance, on_can);
         }
     }

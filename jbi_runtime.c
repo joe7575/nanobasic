@@ -39,7 +39,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define DPUSH(x) vm->datastack[(uint8_t)(vm->dsp++) % k_STACK_SIZE] = x
 #define DPOP() vm->datastack[(uint8_t)(--vm->dsp) % k_STACK_SIZE]
-#define DSTACK(x) vm->datastack[(uint8_t)((vm->dsp + x)) % k_STACK_SIZE]
+#define DTOP() vm->datastack[(uint8_t)(vm->dsp - 1) % k_STACK_SIZE]
+#define DPEEK(x) vm->datastack[(uint8_t)((vm->dsp + x)) % k_STACK_SIZE]
+
 #define CPUSH(x) vm->callstack[(uint8_t)(vm->csp++) % k_STACK_SIZE] = x
 #define CPOP() vm->callstack[(uint8_t)(--vm->csp) % k_STACK_SIZE]
 
@@ -70,7 +72,7 @@ uint32_t *jbi_get_var_address(void *pv_vm, uint8_t var) {
 uint8_t *jbi_get_arr_address(void *pv_vm, uint8_t var) {
     t_VM *vm = pv_vm;
     uint_least16_t addr = vm->variables[var];
-    return &vm->heap[(addr & 0x7FFF) + 1];
+    return &vm->heap[addr & 0x7FFF];
 }
 
 uint32_t jbi_pop_var(void *pv_vm) {
@@ -116,8 +118,10 @@ void jbi_set_pc(void * pv_vm, uint16_t addr) {
 uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles) {
     uint32_t tmp1, tmp2;
     uint16_t idx;
-    uint16_t addr, size;
-    uint8_t  var;
+    uint16_t addr, addr2, size;
+    uint16_t offs1, offs2;
+    uint16_t size1, size2;
+    uint8_t  var, val;
     uint8_t  *ptr;
     t_VM *vm = pv_vm;
 
@@ -130,165 +134,165 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
         {
         case k_END:
             return JBI_END;
-        case k_PRINTS:
+        case k_PRINT_STR_N1:
             tmp1 = DPOP();
             PRINTF("%s", STR(tmp1));
             vm->pc += 1;
             break;
-        case k_PRINTV:
+        case k_PRINT_VAL_N1:
             PRINTF("%d", DPOP());
             vm->pc += 1;
             break;
-        case k_PRINTNL:
+        case k_PRINT_NEWL_N1:
             PRINTF("\n");
             vm->pc += 1;
             break;
-        case k_PRINTT:
+        case k_PRINT_TAB_N1:
             PRINTF("\t");
             vm->pc += 1;
             break;
-        case k_STRING:
+        case k_PRINT_BLANKS_N1:
+            val = DPOP();
+            for(uint8_t i = 0; i < val; i++) {
+                PRINTF(" ");
+            }
+            vm->pc += 1;
+            break;
+        case k_PUSH_STR_Nx:
             tmp1 = p_programm[vm->pc + 1]; // string length
             DPUSH(vm->pc + 2);  // push string address
             vm->pc += tmp1 + 2;
             break;
-        case k_NUMBER:
+        case k_PUSH_NUM_N5:
             DPUSH(ACS32(p_programm[vm->pc + 1]));
             vm->pc += 5;
             break;
-        case k_BYTENUM:
+        case k_PUSH_NUM_N2:
             DPUSH(p_programm[vm->pc + 1]);
             vm->pc += 2;
             break;
-        case k_VAR:
+        case k_PUSH_VAR_N2:
             var = p_programm[vm->pc + 1];
             DPUSH(vm->variables[var]);
             vm->pc += 2;
             break;
-        case k_LET:
+        case k_POP_VAR_N2:
+        case k_POP_STR_N2:
             var = p_programm[vm->pc + 1];
             vm->variables[var] = DPOP();
             vm->pc += 2;
             break;
-        case k_DIM:
+        case k_DIM_ARR_N2:
             var = p_programm[vm->pc + 1];
             size = DPOP();
-            addr = jbi_mem_alloc(vm, size);
+            addr = jbi_mem_alloc(vm, size * sizeof(uint32_t));
             if(addr == 0) {
                 PRINTF("Error: Out of memory\n");
                 return JBI_ERROR;
             }
+            memset(&vm->heap[addr & 0x7FFF], 0, size * sizeof(uint32_t));
             vm->variables[var] = addr;
             vm->pc += 2;
             break;
-        case k_ADD:
+        case k_BREAK_INSTR_N1:
+            vm->pc += 1; 
+            return JBI_BREAK;
+        case k_ADD_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
-            DPUSH(tmp1 + tmp2);
+            DTOP() = DTOP() + tmp2;
             vm->pc += 1;
             break;
-        case k_SUB:
+        case k_SUB_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
-            DPUSH(tmp1 - tmp2);
+            DTOP() = DTOP() - tmp2;
             vm->pc += 1;
             break;
-        case k_MUL:
+        case k_MUL_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
-            DPUSH(tmp1 * tmp2);
+            DTOP() = DTOP() * tmp2;
             vm->pc += 1;
             break;
-        case k_DIV:
+        case k_DIV_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
             if(tmp2 == 0) {
               PRINTF("Error: Division by zero\n");
               DPUSH(0);
             } else {
-              DPUSH(tmp1 / tmp2);
+              DTOP() = DTOP() / tmp2;
             }
             vm->pc += 1;
             break;
-        case k_MOD:
+        case k_MOD_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
             if(tmp2 == 0) {
               DPUSH(0);
             } else {
-              DPUSH(tmp1 % tmp2);
+              DTOP() = DTOP() % tmp2;
             }
             vm->pc += 1;
             break;
-        case k_AND:
+        case k_AND_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
-            DPUSH(tmp1 && tmp2);
+            DTOP() = DTOP() && tmp2;
             vm->pc += 1;
             break;
-        case k_OR:
+        case k_OR_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
-            DPUSH(tmp1 || tmp2);
+            DTOP() = DTOP() || tmp2;
             vm->pc += 1;
             break;
-        case k_NOT:
-            DPUSH(!DPOP());
+        case k_NOT_N1:
+            DTOP() = !DTOP();
             vm->pc += 1;
             break;
-        case k_EQU:
+        case k_EQUAL_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
-            DPUSH(tmp1 == tmp2);
+            DTOP() = DTOP() == tmp2;
             vm->pc += 1;
             break;
-        case k_NEQU :
+        case k_NOT_EQUAL_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
-            DPUSH(tmp1 != tmp2);
+            DTOP() = DTOP() != tmp2;
             vm->pc += 1;
             break;
-        case k_LE:
+        case k_LESS_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
-            DPUSH(tmp1 < tmp2);
+            DTOP() = DTOP() < tmp2;
             vm->pc += 1;
             break;
-        case k_LEEQU:
+        case k_LESS_EQU_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
-            DPUSH(tmp1 <= tmp2);
+            DTOP() = DTOP() <= tmp2;
             vm->pc += 1;
             break;
-        case k_GR:
+        case k_GREATER_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
-            DPUSH(tmp1 > tmp2);
+            DTOP() = DTOP() > tmp2;
             vm->pc += 1;
             break;
-        case k_GREQU:
+        case k_GREATER_EQU_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
-            DPUSH(tmp1 >= tmp2);
+            DTOP() = DTOP() >= tmp2;
             vm->pc += 1;
             break;
-        case k_GOTO:
+        case k_GOTO_N2:
             vm->pc = ACS16(p_programm[vm->pc + 1]);
             break;
-        case k_GOSUB:
+        case k_GOSUB_N2:
             CPUSH(vm->pc + 3);
             vm->pc = ACS16(p_programm[vm->pc + 1]);
             break;
-        case k_RETURN:
+        case k_RETURN_N1:
             vm->pc = (uint16_t)CPOP();
             break;
-        case k_NEXT:
+        case k_NEXT_N4:
             // ID = ID + stack[-1]
             // IF ID <= stack[-2] GOTO start
             tmp1 = ACS16(p_programm[vm->pc + 1]);
             var = p_programm[vm->pc + 3];
-            vm->variables[var] = vm->variables[var] + DSTACK(-1);
-            if(vm->variables[var] <= DSTACK(-2)) {
+            vm->variables[var] = vm->variables[var] + DTOP();
+            if(vm->variables[var] <= DPEEK(-2)) {
               vm->pc = tmp1;
             } else {
               vm->pc += 4;
@@ -296,17 +300,125 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
               DPOP();  // remove loop end value
             }
             break;
-        case k_IF:
+        case k_IF_N2:
             if(DPOP() == 0) {
               vm->pc = ACS16(p_programm[vm->pc + 1]);
             } else {
               vm->pc += 3;
             }
             break;
-        case k_FUNC:
+        case k_SET_ARR_ELEM_N2:
+            var = p_programm[vm->pc + 1];
+            addr = vm->variables[var] & 0x7FFF;
+            tmp1 = DPOP();
+            tmp2 = DPOP() * sizeof(uint32_t);
+            if(tmp2 >= jbi_mem_get_blocksize(vm, addr)) {
+                PRINTF("Error: Array index out of bounds\n");
+                return JBI_ERROR;
+            }
+            ACS32(vm->heap[addr + tmp2]) = tmp1;
+            vm->pc += 2;
+            break;
+        case k_GET_ARR_ELEM_N2:
+            var = p_programm[vm->pc + 1];
+            addr = vm->variables[var] & 0x7FFF;
+            tmp1 = DPOP() * sizeof(uint32_t);
+            if(tmp1 >= jbi_mem_get_blocksize(vm, addr)) {
+                PRINTF("Error: Array index out of bounds\n");
+                return JBI_ERROR;
+            }
+            DPUSH(ACS32(vm->heap[addr + tmp1]));
+            vm->pc += 2;
+            break;
+        case k_SET_ARR_1BYTE_N2:
+            var = p_programm[vm->pc + 1];
+            addr = vm->variables[var] & 0x7FFF;
+            tmp1 = DPOP();
+            tmp2 = DPOP();
+            if(tmp2 >= jbi_mem_get_blocksize(vm, addr)) {
+                PRINTF("Error: Array index out of bounds\n");
+                return JBI_ERROR;
+            }
+            ACS8(vm->heap[addr + tmp2]) = tmp1;
+            vm->pc += 2;
+            break;
+        case k_GET_ARR_1BYTE_N2:
+            var = p_programm[vm->pc + 1];
+            addr = vm->variables[var] & 0x7FFF;
+            tmp1 = DPOP();
+            if(tmp1 >= jbi_mem_get_blocksize(vm, addr)) {
+                PRINTF("Error: Array index out of bounds\n");
+                return JBI_ERROR;
+            }
+            DPUSH(ACS8(vm->heap[addr + tmp1]));
+            vm->pc += 2;
+            break;
+        case k_SET_ARR_2BYTE_N2:
+            var = p_programm[vm->pc + 1];
+            addr = vm->variables[var] & 0x7FFF;
+            tmp1 = DPOP();
+            tmp2 = DPOP();
+            if(tmp2 + 1 >= jbi_mem_get_blocksize(vm, addr)) {
+                PRINTF("Error: Array index out of bounds\n");
+                return JBI_ERROR;
+            }
+            ACS16(vm->heap[addr + tmp2]) = tmp1;
+            vm->pc += 2;
+            break;
+        case k_GET_ARR_2BYTE_N2:
+            var = p_programm[vm->pc + 1];
+            addr = vm->variables[var] & 0x7FFF;
+            tmp1 = DPOP();
+            if(tmp1 + 1 >= jbi_mem_get_blocksize(vm, addr)) {
+                PRINTF("Error: Array index out of bounds\n");
+                return JBI_ERROR;
+            }
+            DPUSH(ACS16(vm->heap[addr + tmp1]));
+            vm->pc += 2;
+            break;
+        case k_SET_ARR_4BYTE_N2:
+            var = p_programm[vm->pc + 1];
+            addr = vm->variables[var] & 0x7FFF;
+            tmp1 = DPOP();
+            tmp2 = DPOP();
+            if(tmp2 + 3 >= jbi_mem_get_blocksize(vm, addr)) {
+                PRINTF("Error: Array index out of bounds\n");
+                return JBI_ERROR;
+            }
+            ACS32(vm->heap[addr + tmp2]) = tmp1;
+            vm->pc += 2;
+            break;
+        case k_GET_ARR_4BYTE_N2:
+            var = p_programm[vm->pc + 1];
+            addr = vm->variables[var] & 0x7FFF;
+            tmp1 = DPOP();
+            if(tmp1 + 3 >= jbi_mem_get_blocksize(vm, addr)) {
+                PRINTF("Error: Array index out of bounds\n");
+                return JBI_ERROR;
+            }
+            DPUSH(ACS32(vm->heap[addr + tmp1]));
+            vm->pc += 2;
+            break;
+        case k_COPY_N1:
+            // copy(arr, offs, arr, offs, bytes)
+            size = DPOP();  // number of bytes
+            offs2 = DPOP();  // source offset
+            tmp2 = DPOP() & 0x7FFF;  // source address
+            offs1 = DPOP();  // destination offset
+            tmp1 = DPOP() & 0x7FFF;  // destination address
+            size1 = jbi_mem_get_blocksize(vm, tmp1);
+            size2 = jbi_mem_get_blocksize(vm, tmp2);
+            if(size + offs1 > size1 || size + offs2 > size2) {
+                PRINTF("Error: Array index out of bounds\n");
+                return JBI_ERROR;
+            }
+            memcpy(&vm->heap[tmp1 + offs1], &vm->heap[tmp2 + offs2], size);
+            vm->pc += 1;
+            break;
+        case k_FUNC_CALL:
             switch(p_programm[vm->pc + 1]) {
-            case JBI_CMD: vm->pc += 2; return JBI_CMD;
-            case k_LEFTS:
+            case k_CALL_CMD_N2: vm->pc += 2; return JBI_CMD;
+            case k_LEFT_STR_N2:
                 tmp2 = DPOP();  // number of characters
                 tmp1 = DPOP();  // string address
                 addr = jbi_mem_alloc(vm, tmp2 + 1);
@@ -318,7 +430,7 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
                 DPUSH(addr);
                 vm->pc += 2;
                 break;
-            case k_RIGHTS:
+            case k_RIGHT_STR_N2:
                 tmp2 = DPOP();  // number of characters
                 tmp1 = DPOP();  // string address
                 addr = jbi_mem_alloc(vm, tmp2 + 1);
@@ -330,7 +442,7 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
                 DPUSH(addr);
                 vm->pc += 2;
                 break;
-            case k_MIDS:
+            case k_MID_STR_N2:
                 tmp2 = DPOP();  // number of characters
                 tmp1 = DPOP();  // start position
                 idx = DPOP();   // string address
@@ -343,19 +455,19 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
                 DPUSH(addr);
                 vm->pc += 2;
                 break;
-            case k_LEN:
+            case k_STR_LEN_N2:
                 tmp1 = DPOP();
                 DPUSH(strlen(STR(tmp1)));
                 vm->pc += 2;
                 break;
-            case k_VAL:
+            case k_STR_TO_VAL_N2:
                 tmp1 = DPOP();
                 DPUSH(atoi(STR(tmp1)));
                 vm->pc += 2;
                 break;
-            case k_STRS:
+            case k_VAL_TO_STR_N2:
                 tmp1 = DPOP();
-                addr = jbi_mem_alloc(vm, 12);
+                addr = jbi_mem_alloc(vm, 14);
                 if(addr == 0) {
                     PRINTF("Error: Out of memory\n");
                     return JBI_ERROR;
@@ -364,58 +476,30 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
                 DPUSH(addr);
                 vm->pc += 2;
                 break;
-            case k_SET1:
-                var = p_programm[vm->pc + 2];
-                addr = vm->variables[var] & 0x7FFF;
-                tmp1 = DPOP();
-                tmp2 = DPOP();
-                ACS8(vm->heap[addr + tmp2]) = tmp1;
-                vm->pc += 3;
-                break;
-            case k_GET1:
-                var = p_programm[vm->pc + 2];
-                addr = vm->variables[var] & 0x7FFF;
-                tmp1 = DPOP();
-                DPUSH(ACS8(vm->heap[addr + tmp1]));
-                vm->pc += 3;
-                break;
-            case k_SET2:
-                var = p_programm[vm->pc + 2];
-                addr = vm->variables[var] & 0x7FFF;
-                tmp1 = DPOP();
-                tmp2 = DPOP();
-                ACS16(vm->heap[addr + tmp2]) = tmp1;
-                vm->pc += 3;
-                break;
-            case k_GET2:
-                var = p_programm[vm->pc + 2];
-                addr = vm->variables[var] & 0x7FFF;
-                tmp1 = DPOP();
-                DPUSH(ACS16(vm->heap[addr + tmp1]));
-                vm->pc += 3;
-                break;
-            case k_SET4:
-                var = p_programm[vm->pc + 2];
-                addr = vm->variables[var] & 0x7FFF;
-                tmp1 = DPOP();
-                tmp2 = DPOP();
-                ACS32(vm->heap[addr + tmp2]) = tmp1;
-                vm->pc += 3;
-                break;
-            case k_GET4:
-                var = p_programm[vm->pc + 2];
-                addr = vm->variables[var] & 0x7FFF;
-                tmp1 = DPOP();
-                DPUSH(ACS32(vm->heap[addr + tmp1]));
-                vm->pc += 3;
-                break;
+            // case k_POP_PTR_N2:
+            //     var = p_programm[vm->pc + 1];
+            //     addr = vm->variables[var];
+            //     if(addr > 0) {
+            //         jbi_mem_free(vm, addr);
+            //     }
+            //     addr = DPOP();
+            //     size = jbi_mem_get_blocksize(vm, addr);
+            //     addr2 = jbi_mem_alloc(vm, size);
+            //     if(addr2 == 0) {
+            //         PRINTF("Error: Out of memory\n");
+            //         return JBI_ERROR;
+            //     }
+            //     memcpy(&vm->heap[addr2 & 0x7FFF], &vm->heap[addr & 0x7FFF], size);
+            //     vm->variables[var] = addr2;
+            //     vm->pc += 2;
+            //     break;
             default:
                 PRINTF("Error: unknown function '%u'\n", p_programm[vm->pc + 1]);
                 vm->pc += 2;
                 break;
             }
             break;
-        case k_S_ADD:
+        case k_ADD_STR_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
             uint8_t len = strlen(STR(tmp1)) + strlen(STR(tmp2)) + 1;
@@ -429,42 +513,43 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
             DPUSH(addr);
             vm->pc += 1;
             break;
-        case k_S_EQU:
+        case k_STR_EQUAL_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(strcmp(STR(tmp1), STR(tmp2)) == 0 ? 1 : 0);
             vm->pc += 1;
             break;
-        case k_S_NEQU :
+        case k_STR_NOT_EQU_N1 :
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(strcmp(STR(tmp1), STR(tmp2)) == 0 ? 0 : 1);
             vm->pc += 1;
             break;
-        case k_S_LE:
+        case k_STR_LESS_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(strcmp(STR(tmp1), STR(tmp2)) < 0 ? 1 : 0);
             vm->pc += 1;
             break;
-        case k_S_LEEQU:
+        case k_STR_LESS_EQU_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(strcmp(STR(tmp1), STR(tmp2)) <= 0 ? 1 : 0);
             vm->pc += 1;
             break;
-        case k_S_GR:
+        case k_STR_GREATER_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(strcmp(STR(tmp1), STR(tmp2)) > 0 ? 1 : 0);
             vm->pc += 1;
-        case k_S_GREQU:
+        case k_STR_GREATER_EQU_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
             DPUSH(strcmp(STR(tmp1), STR(tmp2)) >= 0 ? 1 : 0);
             vm->pc += 1;
             break;
         default:
+            PRINTF("Error: unknown opcode '%u'\n", p_programm[vm->pc]);
             return JBI_ERROR;
         }
     }

@@ -54,6 +54,13 @@ char *jbi_scanner(char *p_in, char *p_out) {
     }
 
     while((c8 = *p_in) != 0) {
+        if(c8 == '\'') {
+            while((c8 = *p_in) != '\n') {
+                p_in++;
+            }
+            p_in++;
+            continue;
+        }
         if(is_alpha(c8)) {
             *p_out++ = c8;
             p_in++;
