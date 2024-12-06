@@ -30,11 +30,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 //#define DEBUG
 
-#define MAX_MEM_LEN     256
-#define MAX_NUM_SYM     4000 // needed if line numbers are used
-#define MAX_SYM_LEN     8
-#define MAX_CODE_LEN    32000
-#define MAX_FOR_LOOPS   4
+#define MAX_LINE_LEN        256
+#define MAX_SYM_LEN         8
 
 #define MIN(a,b)        ((a) < (b) ? (a) : (b))
 
@@ -51,7 +48,7 @@ enum {
     SET1, SET2, SET4, GET1,     // 160 - 163    
     GET2, GET4, LEFTS, RIGHTS,  // 164 - 167
     MIDS, LEN, VAL, STRS,       // 168 - 171
-    SPC, STACK, COPY            // 172 - 174
+    SPC, STACK, COPY, CONST,    // 172 - 175
 };
 
 typedef enum type_t {
@@ -59,6 +56,7 @@ typedef enum type_t {
     e_NUM,
     e_STR,
     e_ARR,
+    e_CNST,
 } type_t;
 
 // Keywords
@@ -74,7 +72,7 @@ static char *Keywords[] = {
     "set1", "set2", "set4", "get1",
     "get2", "get4", "left$", "right$",
     "mid$", "len", "val", "str$",
-    "spc", "stack", "copy",
+    "spc", "stack", "copy", "const",
 };
 
 // Symbol table
@@ -85,18 +83,18 @@ typedef struct {
     uint16_t value;  // Variable index (0..n) or label address
 } sym_t;
 
-static sym_t a_Symbol[MAX_NUM_SYM] = {0};
+static sym_t a_Symbol[cfg_MAX_NUM_SYM] = {0};
 static uint8_t CurrVarIdx = 0;
-static uint8_t a_Code[MAX_CODE_LEN];
+static uint8_t a_Code[cfg_MAX_CODE_LEN];
 static uint16_t Pc = 0;
 static uint16_t PcStart = 0;
 static uint16_t Linenum = 0;
 static uint16_t ErrCount = 0;
 static uint16_t SymIdx = 0;
 static uint16_t StartOfVars = 0;
-static uint16_t a_ForLoopStartAddr[MAX_FOR_LOOPS] = {0};
-static char a_Line[MAX_MEM_LEN];
-static char a_Buff[MAX_MEM_LEN];
+static uint16_t a_ForLoopStartAddr[cfg_MAX_FOR_LOOPS] = {0};
+static char a_Line[MAX_LINE_LEN];
+static char a_Buff[MAX_LINE_LEN];
 static char *p_pos = NULL;
 static char *p_next = NULL;
 static uint32_t Value;
@@ -130,6 +128,7 @@ static void compile_set1(void);
 static void compile_set2(void);
 static void compile_set4(void);
 static void compile_copy(void);
+static void compile_const(void);
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
 static uint16_t sym_get(char *id);
 static void error(char *fmt, ...);
@@ -178,12 +177,15 @@ void jbi_init(void) {
     sym_add("mod", 0, MOD);
     sym_add("cmd", 0, CMD);
     sym_add("break", 0, BREAK);
+#ifdef cfg_BYTE_ACCESS
     sym_add("set1", 0, SET1);
     sym_add("set2", 0, SET2);
     sym_add("set4", 0, SET4);
     sym_add("get1", 0, GET1);
     sym_add("get2", 0, GET2);
     sym_add("get4", 0, GET4);
+#endif
+#ifdef cfg_STRING_SUPPORT    
     sym_add("left$", 0, LEFTS);
     sym_add("right$", 0, RIGHTS);
     sym_add("mid$", 0, MIDS);
@@ -191,8 +193,10 @@ void jbi_init(void) {
     sym_add("val", 0, VAL);
     sym_add("str$", 0, STRS);
     sym_add("spc", 0, SPC);
+#endif
     sym_add("stack", 0, STACK);
     sym_add("copy", 0, COPY);
+    sym_add("const", 0, CONST);
     StartOfVars = CurrVarIdx;
     CurrVarIdx = 0;
     Pc = 0;
@@ -230,23 +234,25 @@ uint8_t *jbi_compiler(char *filename, uint16_t *p_len, uint8_t *p_num_vars) {
 void jbi_output_symbol_table(void) {
     printf("#### Symbol table ####\n");
     printf("Variables:\n");
-    for(uint16_t i = StartOfVars; i < MAX_NUM_SYM; i++) {
+    for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL)
         {
             printf("%16s: %u\n", a_Symbol[i].name, a_Symbol[i].value);
         }
     }
+#ifndef cfg_LINE_NUMBERS    
     printf("Labels:\n");
-    for(uint16_t i = StartOfVars; i < MAX_NUM_SYM; i++) {
+    for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type == LABEL)
         {
             printf("%16s: %u\n", a_Symbol[i].name, a_Symbol[i].value);
         }
     }
+#endif
 }
 
 uint16_t jbi_get_label_address(char *name) {
-    for(uint16_t i = StartOfVars; i < MAX_NUM_SYM; i++) {
+    for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type == LABEL && strcmp(a_Symbol[i].name, name) == 0)
         {
             return a_Symbol[i].value;
@@ -256,7 +262,7 @@ uint16_t jbi_get_label_address(char *name) {
 }   
 
 uint16_t jbi_get_var_num(char *name) {
-    for(uint16_t i = StartOfVars; i < MAX_NUM_SYM; i++) {
+    for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL && strcmp(a_Symbol[i].name, name) == 0)
         {
             return a_Symbol[i].value;
@@ -274,7 +280,7 @@ static void compile(FILE *fp) {
     Pc = PcStart;
 
     fseek(fp, 0, SEEK_SET);
-    while(fgets(a_Line, MAX_MEM_LEN, fp) != NULL) {
+    while(fgets(a_Line, MAX_LINE_LEN, fp) != NULL) {
         Linenum++;
         p_pos = p_next = a_Line;
         compile_line();
@@ -412,10 +418,13 @@ static void compile_stmt(void) {
     case END: compile_end(); break;
     case CMD: compile_cmd(); break;
     case BREAK: compile_break(); break;
+#ifdef cfg_BYTE_ACCESS    
     case SET1: compile_set1(); break;
     case SET2: compile_set2(); break;
     case SET4: compile_set4(); break;
     case COPY: compile_copy(); break;
+#endif
+    case CONST: compile_const(); break;
     default: error("unknown statement %s", token(tok)); break;
     }
 }
@@ -447,7 +456,7 @@ static void compile_for(void) {
         a_Code[Pc++] = 1;
     }
     // Save start address
-    if(ForLoopIdx >= MAX_FOR_LOOPS) {
+    if(ForLoopIdx >= cfg_MAX_FOR_LOOPS) {
         error("too many nested 'for' loops");
         return;
     }
@@ -524,7 +533,6 @@ static void compile_var(void) {
         // Var[value] = pop()
         a_Code[Pc++] = k_POP_STR_N2;
         a_Code[Pc++] = a_Symbol[idx].value;
-    //} else if(tok == ID || tok == ARR) { // let a = expression
     } else if(tok == ID) { // let a = expression
         match('=');
         type = compile_expression(e_ANY);
@@ -646,6 +654,7 @@ static void compile_break(void) {
     a_Code[Pc++] = k_BREAK_INSTR_N1;
 }
 
+#ifdef cfg_BYTE_ACCESS
 static void compile_set1(void) {
     compile_set(k_SET_ARR_1BYTE_N2);
 }
@@ -672,7 +681,20 @@ static void compile_copy(void) {
     match(')');
     a_Code[Pc++] = k_COPY_N1;
 }
+#endif
 
+static void compile_const(void) {
+    uint8_t tok = next();
+    uint16_t idx = SymIdx;
+    match('=');
+    match(NUM);
+    a_Symbol[idx].type = e_CNST;
+    a_Symbol[idx].value = Value;
+}
+
+/**************************************************************************************************
+ * Symbol table and other helper functions
+ *************************************************************************************************/
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
     uint16_t start = 0;
     char sym[MAX_SYM_LEN];
@@ -685,7 +707,7 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
         }
     }
     // Search for existing symbol
-    for(uint16_t i = 0; i < MAX_NUM_SYM; i++) {
+    for(uint16_t i = 0; i < cfg_MAX_NUM_SYM; i++) {
         if(strcmp(a_Symbol[i].name, sym) == 0) {
             return i;
         }
@@ -696,7 +718,7 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
     }
 
     // Add new symbol
-    for(uint16_t i = start; i < MAX_NUM_SYM; i++) {
+    for(uint16_t i = start; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] == '\0') {
             memcpy(a_Symbol[i].name, sym, MIN(strlen(sym), MAX_SYM_LEN));
             a_Symbol[i].value = val;
@@ -705,7 +727,7 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
             return i;
         }
     }
-    return -1;
+    error("symbol table full");
 }
 
 static uint16_t sym_get(char *id) {
@@ -719,7 +741,7 @@ static uint16_t sym_get(char *id) {
         }
     }
     // Search for existing symbol
-    for(uint16_t i = 0; i < MAX_NUM_SYM; i++) {
+    for(uint16_t i = 0; i < cfg_MAX_NUM_SYM; i++) {
         if(strcmp(a_Symbol[i].name, sym) == 0) {
             return a_Symbol[i].value;
         }
@@ -755,6 +777,7 @@ static char *token(uint8_t tok) {
     }
 } 
 
+#ifdef cfg_BYTE_ACCESS    
 static void compile_set(uint8_t instr) {
     uint8_t idx;
     match('(');
@@ -781,6 +804,7 @@ static void compile_get(uint8_t tok, uint8_t instr) {
     a_Code[Pc++] = instr;
     a_Code[Pc++] = a_Symbol[idx].value;
 }
+#endif
 
 /**************************************************************************************************
  * Expression compiler
@@ -847,6 +871,7 @@ static type_t compile_comp_expr(void) {
             error("type mismatch");
             return type1;
         }
+#ifdef cfg_STRING_SUPPORT        
         if(type1 == e_STR) {
             switch(op) {
             case EQ: a_Code[Pc++] = k_STR_EQUAL_N1; break;
@@ -858,6 +883,9 @@ static type_t compile_comp_expr(void) {
             default: error("unknown operator '%u'", op); break;
             }
         } else {
+#else
+        { 
+#endif
             switch(op) {
             case EQ: a_Code[Pc++] = k_EQUAL_N1; break;
             case NQ: a_Code[Pc++] = k_NOT_EQUAL_N1; break;
@@ -887,7 +915,12 @@ static type_t compile_add_expr(void) {
             if(type1 == e_NUM) {
               a_Code[Pc++] = k_ADD_N1;
             } else {
+#ifdef cfg_STRING_SUPPORT                
                 a_Code[Pc++] = k_ADD_STR_N1;
+#else
+                error("type mismatch");
+                return type1;
+#endif
             }
         } else {
             if(type1 == e_NUM) {
@@ -934,6 +967,24 @@ static type_t compile_factor(void) {
         compile_expression(e_NUM);
         match(')');
         break;
+    case e_CNST:
+        Value = a_Symbol[SymIdx].value;
+        match(e_CNST);
+        if(Value < 256)
+        {
+          a_Code[Pc++] = k_PUSH_NUM_N2;
+          a_Code[Pc++] = Value;
+        }
+        else
+        {
+          a_Code[Pc++] = k_PUSH_NUM_N5;
+          a_Code[Pc++] = Value & 0xFF;
+          a_Code[Pc++] = (Value >> 8) & 0xFF;
+          a_Code[Pc++] = (Value >> 16) & 0xFF;
+          a_Code[Pc++] = (Value >> 24) & 0xFF;
+        }
+        type = e_NUM;
+        break;
     case NUM: // number, like 1234
         match(NUM);
         if(Value < 256)
@@ -974,6 +1025,7 @@ static type_t compile_factor(void) {
             type = e_ARR;
         }
         break;
+#ifdef cfg_BYTE_ACCESS        
     case GET1: // get1 function
         compile_get(GET1, k_GET_ARR_1BYTE_N2);
         type = e_NUM;
@@ -986,6 +1038,7 @@ static type_t compile_factor(void) {
         compile_get(GET4, k_GET_ARR_4BYTE_N2);
         type = e_NUM;
         break;
+#endif
     case STR: // string, like "Hello"
         match(STR);
         // push string address
@@ -1003,6 +1056,7 @@ static type_t compile_factor(void) {
         a_Code[Pc++] = a_Symbol[SymIdx].value;
         type = e_STR;
         break;
+#ifdef cfg_STRING_SUPPORT        
     case LEFTS: // left function
         match(LEFTS);
         match('(');
@@ -1065,10 +1119,12 @@ static type_t compile_factor(void) {
         a_Code[Pc++] = k_VAL_TO_STR_N2;
         type = e_STR;
         break;
-    case STACK: // Nothing to do. Value is already on the stack
+#endif        
+    case STACK: // Move value from (external) parameter stack to the data stack
         match(STACK);
         match('(');
         match(')');
+        a_Code[Pc++] = k_POP_PUSH_N1;
         type = e_NUM;
         break;
     default:

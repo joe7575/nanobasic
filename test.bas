@@ -1,5 +1,6 @@
 rem Mein kleines Testprogramm
-let x = 1
+const kV = 100
+let x = 1 + kV
 loop: print "X = "; x,
 let x = x + 1;let y=x*10
 if x < 10 then goto loop
@@ -49,5 +50,6 @@ next i
 return
 
 on_can:
-print "on_can"
+let p1 = stack()
+print "on_can", p1
 return

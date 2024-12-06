@@ -37,13 +37,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
     #include "board.h"
 #endif
 
-#define DPUSH(x) vm->datastack[(uint8_t)(vm->dsp++) % k_STACK_SIZE] = x
-#define DPOP() vm->datastack[(uint8_t)(--vm->dsp) % k_STACK_SIZE]
-#define DTOP() vm->datastack[(uint8_t)(vm->dsp - 1) % k_STACK_SIZE]
-#define DPEEK(x) vm->datastack[(uint8_t)((vm->dsp + x)) % k_STACK_SIZE]
+#define DPUSH(x) vm->datastack[(uint8_t)(vm->dsp++) % cfg_DATASTACK_SIZE] = x
+#define DPOP() vm->datastack[(uint8_t)(--vm->dsp) % cfg_DATASTACK_SIZE]
+#define DTOP() vm->datastack[(uint8_t)(vm->dsp - 1) % cfg_DATASTACK_SIZE]
+#define DPEEK(x) vm->datastack[(uint8_t)((vm->dsp + x)) % cfg_DATASTACK_SIZE]
 
-#define CPUSH(x) vm->callstack[(uint8_t)(vm->csp++) % k_STACK_SIZE] = x
-#define CPOP() vm->callstack[(uint8_t)(--vm->csp) % k_STACK_SIZE]
+#define CPUSH(x) vm->callstack[(uint8_t)(vm->csp++) % cfg_STACK_SIZE] = x
+#define CPOP() vm->callstack[(uint8_t)(--vm->csp) % cfg_STACK_SIZE]
+
+#define PPUSH(x) vm->paramstack[(uint8_t)(vm->psp++) % cfg_STACK_SIZE] = x
+#define PPOP() vm->paramstack[(uint8_t)(--vm->psp) % cfg_STACK_SIZE]
 
 #define STR(x) (x >= 0x8000 ? (char*)&vm->heap[x & 0x7FFF] : (char*)&p_programm[x])
 
@@ -77,17 +80,22 @@ uint8_t *jbi_get_arr_address(void *pv_vm, uint8_t var) {
 
 uint32_t jbi_pop_var(void *pv_vm) {
     t_VM *vm = pv_vm;
-    return DPOP();
+    if(vm->psp == 0) {
+        return 0;
+    }
+    return PPOP();
 }
 
 void jbi_push_var(void *pv_vm, uint32_t value) {
     t_VM *vm = pv_vm;
-    DPUSH(value);
+    if(vm->psp < cfg_STACK_SIZE) {
+        PPUSH(value);
+    }
 }
 
 uint8_t jbi_stack_depth(void *pv_vm) {
     t_VM *vm = pv_vm;
-    return vm->dsp;
+    return vm->psp;
 }
 
 void jbi_set_pc(void * pv_vm, uint16_t addr) {
@@ -330,6 +338,7 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
             DPUSH(ACS32(vm->heap[addr + tmp1]));
             vm->pc += 2;
             break;
+#ifdef cfg_BYTE_ACCESS            
         case k_SET_ARR_1BYTE_N2:
             var = p_programm[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
@@ -415,9 +424,23 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
             memcpy(&vm->heap[tmp1 + offs1], &vm->heap[tmp2 + offs2], size);
             vm->pc += 1;
             break;
+#endif
+        case k_POP_PUSH_N1:
+            if(vm->psp > 0) {
+                    tmp1 = PPOP();
+            } else {
+                    tmp1 = 0;
+            }
+            DPUSH(tmp1);
+            vm->pc += 1;
+            break;
         case k_FUNC_CALL:
             switch(p_programm[vm->pc + 1]) {
-            case k_CALL_CMD_N2: vm->pc += 2; return JBI_CMD;
+            case k_CALL_CMD_N2:
+                PPUSH(DPOP());
+                vm->pc += 2;
+                return JBI_CMD;
+#ifdef cfg_STRING_SUPPORT
             case k_LEFT_STR_N2:
                 tmp2 = DPOP();  // number of characters
                 tmp1 = DPOP();  // string address
@@ -476,29 +499,14 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
                 DPUSH(addr);
                 vm->pc += 2;
                 break;
-            // case k_POP_PTR_N2:
-            //     var = p_programm[vm->pc + 1];
-            //     addr = vm->variables[var];
-            //     if(addr > 0) {
-            //         jbi_mem_free(vm, addr);
-            //     }
-            //     addr = DPOP();
-            //     size = jbi_mem_get_blocksize(vm, addr);
-            //     addr2 = jbi_mem_alloc(vm, size);
-            //     if(addr2 == 0) {
-            //         PRINTF("Error: Out of memory\n");
-            //         return JBI_ERROR;
-            //     }
-            //     memcpy(&vm->heap[addr2 & 0x7FFF], &vm->heap[addr & 0x7FFF], size);
-            //     vm->variables[var] = addr2;
-            //     vm->pc += 2;
-            //     break;
+#endif
             default:
                 PRINTF("Error: unknown function '%u'\n", p_programm[vm->pc + 1]);
                 vm->pc += 2;
                 break;
             }
             break;
+#ifdef cfg_STRING_SUPPORT            
         case k_ADD_STR_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
@@ -548,6 +556,7 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
             DPUSH(strcmp(STR(tmp1), STR(tmp2)) >= 0 ? 1 : 0);
             vm->pc += 1;
             break;
+#endif
         default:
             PRINTF("Error: unknown opcode '%u'\n", p_programm[vm->pc]);
             return JBI_ERROR;

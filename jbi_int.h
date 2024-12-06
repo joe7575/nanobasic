@@ -22,11 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define k_TAG           0xBC
 #define k_VERSION       0x01
 
-#define k_STACK_SIZE        (16)
-#define k_NUM_VARS          (255)
 #define k_MEM_BLOCK_SIZE    (16)    // Must be a multiple of 4 (real size is MIN_BLOCK_SIZE - 1)
 #define k_MEM_FREE_TAG      (0)     // Also used for number of blocks
-#define k_MEM_HEAP_SIZE     (1024 * 16) // 16k
 
 #define ACS8(x)   *(uint8_t*)&(x)
 #define ACS16(x)  *(uint16_t*)&(x)
@@ -70,6 +67,7 @@ enum {
     k_IF_N2,              // 20 (pop val, END address)
     k_SET_ARR_ELEM_N2,    // 21 (set array element)
     k_GET_ARR_ELEM_N2,    // 22 (get array element)
+#ifdef cfg_BYTE_ACCESS    
     k_SET_ARR_1BYTE_N2,   // 23 (array: set one byte)
     k_GET_ARR_1BYTE_N2,   // 24 (array: get one byte)
     k_SET_ARR_2BYTE_N2,   // 25 (array: set one short)
@@ -77,28 +75,31 @@ enum {
     k_SET_ARR_4BYTE_N2,   // 27 (array: set one long)
     k_GET_ARR_4BYTE_N2,   // 28 (array: get one long)
     k_COPY_N1,            // 29 (copy)
-    k_FUNC_CALL,          // 2A (function call)
-    k_ADD_STR_N1,         // 2B (add two strings from stack)
-    k_STR_EQUAL_N1,       // 2C (compare two values from stack)
-    k_STR_NOT_EQU_N1,     // 2D (compare two values from stack)
-    k_STR_LESS_N1,        // 2E (compare two values from stack)     
-    k_STR_LESS_EQU_N1,    // 2F (compare two values from stack) 
-    k_STR_GREATER_N1,     // 30 (compare two values from stack)      
-    k_STR_GREATER_EQU_N1, // 31 (compare two values from stack)
+#endif
+    k_POP_PUSH_N1,        // 2A (pop and push)
+    k_FUNC_CALL,          // 2B (function call)
+#ifdef cfg_STRING_SUPPORT
+    k_ADD_STR_N1,         // 2C (add two strings from stack)
+    k_STR_EQUAL_N1,       // 2D (compare two values from stack)
+    k_STR_NOT_EQU_N1,     // 2E (compare two values from stack)
+    k_STR_LESS_N1,        // 2F (compare two values from stack)     
+    k_STR_LESS_EQU_N1,    // 30 (compare two values from stack) 
+    k_STR_GREATER_N1,     // 31 (compare two values from stack)      
+    k_STR_GREATER_EQU_N1, // 32 (compare two values from stack)
+#endif
 };
-// #if k_STR_GREATER_EQU_N1 != 0x31
-//     #error "Opcode definitions are not correct" k_STR_GREATER_EQU_N1  
-// #endif
 
 // Function call definitions
 enum {
     k_CALL_CMD_N2,        // 00 (call command)
+#ifdef cfg_STRING_SUPPORT
     k_LEFT_STR_N2,        // 02 (left$)
     k_RIGHT_STR_N2,       // 03 (right$)
     k_MID_STR_N2,         // 04 (mid$)
     k_STR_LEN_N2,         // 05 (len)
     k_STR_TO_VAL_N2,      // 06 (val)
     k_VAL_TO_STR_N2,      // 07 (str$)
+#endif
 };
 
 #ifdef DEBUG
@@ -138,14 +139,18 @@ char *Opcodes[] = {
     "k_IF_N2",
     "k_SET_ARR_ELEM_N2",
     "k_GET_ARR_ELEM_N2",
+#ifdef cfg_BYTE_ACCESS    
     "k_SET_ARR_1BYTE_N2",
     "k_GET_ARR_1BYTE_N2",
     "k_SET_ARR_2BYTE_N2",
     "k_GET_ARR_2BYTE_N2",
     "k_SET_ARR_4BYTE_N2",
     "k_GET_ARR_4BYTE_N2",
-    "",
+    "k_COPY_N1",
+#endif
+    "k_POP_PUSH_N1",
     "k_FUNC_CALL",
+#ifdef cfg_STRING_SUPPORT
     "k_ADD_STR_N1",
     "k_STR_EQUAL_N1",
     "k_STR_NOT_EQU_N1",
@@ -153,6 +158,7 @@ char *Opcodes[] = {
     "k_STR_LESS_EQU_N1",
     "k_STR_GREATER_N1",
     "k_STR_GREATER_EQU_N1",
+#endif
 };
 
 assert(sizeof(Opcodes) / sizeof(Opcodes[0]) == k_STR_GREATER_EQU_N1 + 1);
@@ -163,11 +169,13 @@ typedef struct {
     uint16_t pc;   // Programm counter
     uint8_t  dsp;  // Data stack pointer
     uint8_t  csp;  // Call stack pointer
-    uint32_t datastack[k_STACK_SIZE];
-    uint32_t callstack[k_STACK_SIZE];
-    uint32_t variables[k_NUM_VARS];
+    uint8_t  psp;  // Parameter stack pointer
+    uint32_t datastack[cfg_DATASTACK_SIZE];
+    uint32_t callstack[cfg_STACK_SIZE];
+    uint32_t paramstack[cfg_STACK_SIZE];
+    uint32_t variables[cfg_NUM_VARS];
     uint16_t str_start_addr;
-    uint8_t  heap[k_MEM_HEAP_SIZE];
+    uint8_t  heap[cfg_MEM_HEAP_SIZE];
 } t_VM;
 
 char *jbi_scanner(char *p_in, char *p_out);

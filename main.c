@@ -64,14 +64,17 @@ int main(int argc, char* argv[]) {
     jbi_init();
     //uint8_t *code = jbi_compiler("../temp.bas", &size, &num_vars);
     //uint8_t *code = jbi_compiler("../lineno.bas", &size, &num_vars);
-    uint8_t *code = jbi_compiler("../test.bas", &size, &num_vars);
+    //uint8_t *code = jbi_compiler("../test.bas", &size, &num_vars);
+    uint8_t *code = jbi_compiler("../basis.bas", &size, &num_vars);
 
     if(code == NULL) {
         return 1;
     }
     //jbi_output_symbol_table();
-    //on_can = jbi_get_label_address("on_can");
     on_can = jbi_get_label_address("200");
+    if(on_can == 0) {
+        on_can = jbi_get_label_address("on_can");
+    }
     buf1 = jbi_get_var_num("buf1");
 
     printf("\nJoes Basic Interpreter V1.0\n");
@@ -93,7 +96,7 @@ int main(int argc, char* argv[]) {
                 printf("Send command to %u: %02X %02X %02X %02X\n", num, pArr[0], pArr[1], pArr[2], pArr[3]);
             }
         } else if(on_can > 0){
-            jbi_push_var(instance, 12345);
+            jbi_push_var(instance, 87654);
             jbi_set_pc(instance, on_can);
         }
     }
@@ -103,3 +106,21 @@ int main(int argc, char* argv[]) {
     printf("Ready.\n");
     return 0;
 }
+
+            // case k_POP_PTR_N2:
+            //     var = p_programm[vm->pc + 1];
+            //     addr = vm->variables[var];
+            //     if(addr > 0) {
+            //         jbi_mem_free(vm, addr);
+            //     }
+            //     addr = DPOP();
+            //     size = jbi_mem_get_blocksize(vm, addr);
+            //     addr2 = jbi_mem_alloc(vm, size);
+            //     if(addr2 == 0) {
+            //         PRINTF("Error: Out of memory\n");
+            //         return JBI_ERROR;
+            //     }
+            //     memcpy(&vm->heap[addr2 & 0x7FFF], &vm->heap[addr & 0x7FFF], size);
+            //     vm->variables[var] = addr2;
+            //     vm->pc += 2;
+            //     break;

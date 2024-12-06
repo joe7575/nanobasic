@@ -34,7 +34,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define HEADER_SIZE         2
 
 void jbi_mem_init(t_VM *p_vm) {
-    for(int i = 0; i < k_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
+    for(int i = 0; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
         p_vm->heap[i] = k_MEM_FREE_TAG;
     }
     p_vm->str_start_addr = 0;
@@ -47,7 +47,7 @@ uint16_t jbi_mem_alloc(t_VM *p_vm, uint16_t bytes) {
     uint16_t count = 0;
     uint16_t blocked = 0;
 
-    for(int i = p_vm->str_start_addr; i < k_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
+    for(int i = p_vm->str_start_addr; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
         if(blocked > 0) {
             blocked--;
             continue;
@@ -76,9 +76,9 @@ uint16_t jbi_mem_alloc(t_VM *p_vm, uint16_t bytes) {
 
 void jbi_mem_free(t_VM *p_vm, uint16_t addr) {
     addr = (addr & 0x7FFF) - HEADER_SIZE;
-    if(addr < k_MEM_HEAP_SIZE) {
+    if(addr < cfg_MEM_HEAP_SIZE) {
         uint16_t size = p_vm->heap[addr] * k_MEM_BLOCK_SIZE;
-        if((addr + size) <= k_MEM_HEAP_SIZE) {
+        if((addr + size) <= cfg_MEM_HEAP_SIZE) {
             for(uint8_t i = 0; i < size; i += k_MEM_BLOCK_SIZE) {
                 p_vm->heap[addr + i] = k_MEM_FREE_TAG;
             }
