@@ -57,10 +57,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 /***************************************************************************************************
 **    global functions
 ***************************************************************************************************/
-void *jbi_create(uint8_t num_vars, uint8_t* p_programm) {
+void *jbi_create(uint8_t* p_programm) {
     t_VM *vm = malloc(sizeof(t_VM));
     memset(vm, 0, sizeof(t_VM));
     jbi_mem_init(vm);
+    srand(time(NULL));
     assert(p_programm[0] == k_TAG);
     assert(p_programm[1] == k_VERSION);
     vm->pc = 2;
@@ -123,7 +124,7 @@ void jbi_set_pc(void * pv_vm, uint16_t addr) {
     Number of executed instructions
 
 ***************************************************************************************************/
-uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles) {
+uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles, uint8_t num_vars) {
     uint32_t tmp1, tmp2;
     uint16_t idx;
     uint16_t addr, addr2, size;
@@ -131,6 +132,7 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
     uint16_t size1, size2;
     uint8_t  var, val;
     uint8_t  *ptr;
+    char     *str;
     t_VM *vm = pv_vm;
 
     for(uint16_t i = 0; i < cycles; i++)
@@ -159,12 +161,21 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
             PRINTF("\t");
             vm->pc += 1;
             break;
+        case k_PRINT_SPACE_N1:
+            PRINTF(" ");
+            vm->pc += 1;
+            break;
         case k_PRINT_BLANKS_N1:
             val = DPOP();
             for(uint8_t i = 0; i < val; i++) {
                 PRINTF(" ");
             }
             vm->pc += 1;
+            break;
+        case k_PRINT_LINENO_N3:
+            tmp1 = ACS16(p_programm[vm->pc + 1]);
+            PRINTF("[%u] ", tmp1);
+            vm->pc += 3;
             break;
         case k_PUSH_STR_Nx:
             tmp1 = p_programm[vm->pc + 1]; // string length
@@ -193,7 +204,7 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
         case k_DIM_ARR_N2:
             var = p_programm[vm->pc + 1];
             size = DPOP();
-            addr = jbi_mem_alloc(vm, size * sizeof(uint32_t));
+            addr = jbi_mem_alloc(vm, (size + 1) * sizeof(uint32_t));
             if(addr == 0) {
                 PRINTF("Error: Out of memory\n");
                 return JBI_ERROR;
@@ -284,10 +295,10 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
             DTOP() = DTOP() >= tmp2;
             vm->pc += 1;
             break;
-        case k_GOTO_N2:
+        case k_GOTO_N3:
             vm->pc = ACS16(p_programm[vm->pc + 1]);
             break;
-        case k_GOSUB_N2:
+        case k_GOSUB_N3:
             CPUSH(vm->pc + 3);
             vm->pc = ACS16(p_programm[vm->pc + 1]);
             break;
@@ -308,13 +319,36 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
               DPOP();  // remove loop end value
             }
             break;
-        case k_IF_N2:
+        case k_IF_N3:
             if(DPOP() == 0) {
               vm->pc = ACS16(p_programm[vm->pc + 1]);
             } else {
               vm->pc += 3;
             }
             break;
+#ifdef cfg_ON_COMMANDS
+        case k_ON_GOTO_N2:
+            idx = DPOP();
+            val = p_programm[vm->pc + 1];
+            vm->pc += 2;
+            if(idx == 0 || idx > val) {
+                vm->pc += val * 3;
+            } else {
+                vm->pc += (idx - 1) * 3;
+            }
+            break;
+        case k_ON_GOSUB_N2:
+            idx = DPOP();
+            val = p_programm[vm->pc + 1];
+            vm->pc += 2;
+            if(idx == 0 || idx > val) {
+                vm->pc += val * 3;  // skip all addresses
+            } else {
+                CPUSH(vm->pc + val * 3);  // return address to the next instruction
+                vm->pc += (idx - 1) * 3;  // jump to the selected address
+            }
+            break;
+#endif
         case k_SET_ARR_ELEM_N2:
             var = p_programm[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
@@ -499,12 +533,72 @@ uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles
                 DPUSH(addr);
                 vm->pc += 2;
                 break;
+            case k_VAL_TO_HEX_N2:
+                tmp1 = DPOP();
+                addr = jbi_mem_alloc(vm, 14);
+                if(addr == 0) {
+                    PRINTF("Error: Out of memory\n");
+                    return JBI_ERROR;
+                }
+                sprintf(&vm->heap[addr & 0x7FFF], "%X", tmp1);
+                DPUSH(addr);
+                vm->pc += 2;
+                break;
+            case k_VAL_TO_CHR_N2:
+                tmp1 = DPOP();
+                addr = jbi_mem_alloc(vm, 2);
+                if(addr == 0) {
+                    PRINTF("Error: Out of memory\n");
+                    return JBI_ERROR;
+                }
+                vm->heap[addr & 0x7FFF] = tmp1;
+                vm->heap[(addr + 1) & 0x7FFF] = 0;
+                DPUSH(addr);
+                vm->pc += 2;
+                break;
+            case k_INSTR_N2:
+                tmp2 = DPOP();  // string address
+                tmp1 = DPOP();  // search string
+                val = DPOP() - 1;  // start position
+                val = MAX(val, 0);
+                tmp1 += MIN(val, strlen(STR(tmp1)));
+                str = strstr(STR(tmp1), STR(tmp2));
+                if(str == NULL) {
+                    DPUSH(0);
+                } else {
+                    DPUSH(str - STR(tmp1) + val + 1);
+                }
+                vm->pc += 2;
+                break;
 #endif
             default:
                 PRINTF("Error: unknown function '%u'\n", p_programm[vm->pc + 1]);
                 vm->pc += 2;
                 break;
             }
+            break;
+        case k_ERASE_ARR_N2:
+            var = p_programm[vm->pc + 1];
+            addr = vm->variables[var];
+            if(addr > 0) {
+                jbi_mem_free(vm, addr);
+            }
+            vm->variables[var] = 0;
+            vm->pc += 2;
+            break;
+        case k_FREE_N1:
+            tmp1 = sizeof(vm->variables) / sizeof(vm->variables[0]);
+            PRINTF(" Code: %u/%u, Data: %u/%u, Heap: %u/%u\n", cfg_MAX_CODE_LEN - len, cfg_MAX_CODE_LEN, 
+                                                               tmp1 - num_vars, tmp1,
+                                                               jbi_mem_get_free(vm), cfg_MEM_HEAP_SIZE);
+        case k_RND_N1:
+            tmp1 = DPOP();
+            if(tmp1 == 0) {
+                DPUSH(0);
+            } else {
+                DPUSH(rand() % (tmp1 + 1));
+            }
+            vm->pc += 1;
             break;
 #ifdef cfg_STRING_SUPPORT            
         case k_ADD_STR_N1:

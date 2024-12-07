@@ -19,14 +19,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 */
 
-#define cfg_LINE_NUMBERS      // enable line numbers (or use labels)
-//#define cfg_STRING_SUPPORT     // enable string support
-//#define cfg_BYTE_ACCESS        // enable byte access to arrays
+//#define cfg_LINE_NUMBERS      // enable line numbers (or use labels)
+#define cfg_STRING_SUPPORT     // enable string support
+#define cfg_BYTE_ACCESS        // enable byte access to arrays
+#define cfg_ON_COMMANDS        // enable ON/GOTO/GOSUB commands
 
 #define cfg_MAX_FOR_LOOPS     (4)   // nested FOR loops (2 values per FOR loop on the datastack)
-#define cfg_DATASTACK_SIZE    (16)  // for expression evaluation and FOR loop variables
-#define cfg_STACK_SIZE        (8)   // for function calls and external parameters
-#define cfg_NUM_VARS          (255) // in the range 8..256
+#define cfg_DATASTACK_SIZE    (16)  // value for data stack (for expression evaluation and FOR loop variables)
+#define cfg_STACK_SIZE        (8)   // value for call stack and parameter stack
+#define cfg_NUM_VARS          (256) // in the range 8..256
 #define cfg_MEM_HEAP_SIZE     (1024 * 16) // in 1k steps
 #define cfg_MAX_CODE_LEN      (32000)
 

@@ -1,8 +1,8 @@
 rem Mein kleines Testprogramm
 const kV = 100
 let x = 1 + kV
-loop: print "X = "; x,
-let x = x + 1;let y=x*10
+loop: print "X =" x,
+let x = x + 1:let y=x*10
 if x < 110 then goto loop
 let Bvar = x * 10 + 11
 print "B = "; Bvar
@@ -12,6 +12,8 @@ print
 let A$ = "0123456789"
 print
 print "END", x
+erase buf1
+if kV < 100 then print "kV < 100" else print "kV >= 100"
 end
 
 
@@ -30,7 +32,7 @@ return
 foo2:
 for i = 0 to 10
   print i,
-next i
+next
 return
 
 on_can:

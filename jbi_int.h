@@ -28,7 +28,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define ACS8(x)   *(uint8_t*)&(x)
 #define ACS16(x)  *(uint16_t*)&(x)
 #define ACS32(x)  *(uint32_t*)&(x)
-
+#define MIN(a,b)  ((a) < (b) ? (a) : (b))
+#define MAX(a,b)  ((a) > (b) ? (a) : (b))
 
 // Opcode definitions
 enum {
@@ -37,55 +38,62 @@ enum {
     k_PRINT_VAL_N1,       // 02 (pop value from stack)
     k_PRINT_NEWL_N1,      // 03
     k_PRINT_TAB_N1,       // 04
-    k_PRINT_BLANKS_N1,    // 05 (function spc)
-    k_PUSH_STR_Nx,        // 06 nn S T R I N G 00 (push string address (16 bit))
-    k_PUSH_NUM_N5,        // 07 (push 4 byte const value)
-    k_PUSH_NUM_N2,        // 08 (push 1 byte const value)     
-    k_PUSH_VAR_N2,        // 09 (push variable)
-    k_POP_VAR_N2,         // 0A (pop variable)
-    k_POP_STR_N2,         // 0B (pop variable)
-    k_DIM_ARR_N2,         // 0C (pop variable, pop size)
-    k_BREAK_INSTR_N1,     // 0D (break)
-    k_ADD_N1,             // 0E (add two values from stack)
-    k_SUB_N1,             // 0F (sub ftwo values rom stack)
-    k_MUL_N1,             // 10 (mul two values from stack)
-    k_DIV_N1,             // 11 (div two values from stack)
-    k_MOD_N1,             // 12 (mod two values from stack)
-    k_AND_N1,             // 13 (pop two values from stack)
-    k_OR_N1,              // 14 (pop two values from stack)
-    k_NOT_N1,             // 15 (pop one value from stack)
-    k_EQUAL_N1,           // 16 (compare two values from stack)
-    k_NOT_EQUAL_N1,       // 17 (compare two values from stack)
-    k_LESS_N1,            // 18 (compare two values from stack)     
-    k_LESS_EQU_N1,        // 19 (compare two values from stack) 
-    k_GREATER_N1,         // 1A (compare two values from stack)      
-    k_GREATER_EQU_N1,     // 1B (compare two values from stack)
-    k_GOTO_N2,            // 1C (16 bit programm address)
-    k_GOSUB_N2,           // 1D (16 bit programm address)
-    k_RETURN_N1,          // 1E (pop return address)
-    k_NEXT_N4,            // 1F (16 bit programm address), (variable)
-    k_IF_N2,              // 20 (pop val, END address)
-    k_SET_ARR_ELEM_N2,    // 21 (set array element)
-    k_GET_ARR_ELEM_N2,    // 22 (get array element)
+    k_PRINT_SPACE_N1,     // 05
+    k_PRINT_BLANKS_N1,    // 06 (function spc)
+    k_PRINT_LINENO_N3,    // 07 (print line number for debugging purposes)
+    k_PUSH_STR_Nx,        // 08 nn S T R I N G 00 (push string address (16 bit))
+    k_PUSH_NUM_N5,        // 09 (push 4 byte const value)
+    k_PUSH_NUM_N2,        // 0A (push 1 byte const value)     
+    k_PUSH_VAR_N2,        // 0B (push variable)
+    k_POP_VAR_N2,         // 0C (pop variable)
+    k_POP_STR_N2,         // 0D (pop variable)
+    k_DIM_ARR_N2,         // 0E (pop variable, pop size)
+    k_BREAK_INSTR_N1,     // 0F (break)
+    k_ADD_N1,             // 10 (add two values from stack)
+    k_SUB_N1,             // 11 (sub ftwo values rom stack)
+    k_MUL_N1,             // 12 (mul two values from stack)
+    k_DIV_N1,             // 13 (div two values from stack)
+    k_MOD_N1,             // 14 (mod two values from stack)
+    k_AND_N1,             // 15 (pop two values from stack)
+    k_OR_N1,              // 16 (pop two values from stack)
+    k_NOT_N1,             // 17 (pop one value from stack)
+    k_EQUAL_N1,           // 18 (compare two values from stack)
+    k_NOT_EQUAL_N1,       // 19 (compare two values from stack)
+    k_LESS_N1,            // 1A (compare two values from stack)     
+    k_LESS_EQU_N1,        // 1B (compare two values from stack) 
+    k_GREATER_N1,         // 1C (compare two values from stack)      
+    k_GREATER_EQU_N1,     // 1D (compare two values from stack)
+    k_GOTO_N3,            // 1E (16 bit programm address)
+    k_GOSUB_N3,           // 1F (16 bit programm address)
+    k_RETURN_N1,          // 20 (pop return address)
+    k_NEXT_N4,            // 21 (16 bit programm address), (variable)
+    k_IF_N3,              // 22 (pop val, END address)
+    k_ON_GOTO_N2,         // 23 (on...goto with last number)
+    k_ON_GOSUB_N2,        // 24 (on...gosub with last number)
+    k_SET_ARR_ELEM_N2,    // 25 (set array element)
+    k_GET_ARR_ELEM_N2,    // 26 (get array element)
 #ifdef cfg_BYTE_ACCESS    
-    k_SET_ARR_1BYTE_N2,   // 23 (array: set one byte)
-    k_GET_ARR_1BYTE_N2,   // 24 (array: get one byte)
-    k_SET_ARR_2BYTE_N2,   // 25 (array: set one short)
-    k_GET_ARR_2BYTE_N2,   // 26 (array: get one short)
-    k_SET_ARR_4BYTE_N2,   // 27 (array: set one long)
-    k_GET_ARR_4BYTE_N2,   // 28 (array: get one long)
-    k_COPY_N1,            // 29 (copy)
+    k_SET_ARR_1BYTE_N2,   // 27 (array: set one byte)
+    k_GET_ARR_1BYTE_N2,   // 28 (array: get one byte)
+    k_SET_ARR_2BYTE_N2,   // 29 (array: set one short)
+    k_GET_ARR_2BYTE_N2,   // 2A (array: get one short)
+    k_SET_ARR_4BYTE_N2,   // 2B (array: set one long)
+    k_GET_ARR_4BYTE_N2,   // 2C (array: get one long)
+    k_COPY_N1,            // 2D (copy)
 #endif
-    k_POP_PUSH_N1,        // 2A (pop and push)
-    k_FUNC_CALL,          // 2B (function call)
+    k_POP_PUSH_N1,        // 2E (pop and push)
+    k_FUNC_CALL,          // 2F (function call)
+    k_ERASE_ARR_N2,       // 30 (erase array)
+    k_FREE_N1,            // 31 (free memory)
+    k_RND_N1,             // 32 (random number)
 #ifdef cfg_STRING_SUPPORT
-    k_ADD_STR_N1,         // 2C (add two strings from stack)
-    k_STR_EQUAL_N1,       // 2D (compare two values from stack)
-    k_STR_NOT_EQU_N1,     // 2E (compare two values from stack)
-    k_STR_LESS_N1,        // 2F (compare two values from stack)     
-    k_STR_LESS_EQU_N1,    // 30 (compare two values from stack) 
-    k_STR_GREATER_N1,     // 31 (compare two values from stack)      
-    k_STR_GREATER_EQU_N1, // 32 (compare two values from stack)
+    k_ADD_STR_N1,         // 33 (add two strings from stack)
+    k_STR_EQUAL_N1,       // 34 (compare two values from stack)
+    k_STR_NOT_EQU_N1,     // 35 (compare two values from stack)
+    k_STR_LESS_N1,        // 36 (compare two values from stack)     
+    k_STR_LESS_EQU_N1,    // 37 (compare two values from stack) 
+    k_STR_GREATER_N1,     // 38 (compare two values from stack)      
+    k_STR_GREATER_EQU_N1, // 39 (compare two values from stack)
 #endif
 };
 
@@ -99,6 +107,9 @@ enum {
     k_STR_LEN_N2,         // 05 (len)
     k_STR_TO_VAL_N2,      // 06 (val)
     k_VAL_TO_STR_N2,      // 07 (str$)
+    k_VAL_TO_HEX_N2,      // 08 (hex$)
+    k_VAL_TO_CHR_N2,      // 09 (chr$)
+    k_INSTR_N2,           // 0A (instr)
 #endif
 };
 
@@ -110,6 +121,7 @@ char *Opcodes[] = {
     "k_PRINT_NEWL_N1",
     "k_PRINT_TAB_N1",
     "k_PRINT_BLANKS_N1",
+    "k_PRINT_LINENO_N3",
     "k_PUSH_STR_Nx",
     "k_PUSH_NUM_N5",
     "k_PUSH_NUM_N2",
@@ -132,11 +144,12 @@ char *Opcodes[] = {
     "k_LESS_EQU_N1",
     "k_GREATER_N1",
     "k_GREATER_EQU_N1",
-    "k_GOTO_N2",
-    "k_GOSUB_N2",
+    "k_GOTO_N3",
+    "k_GOSUB_N3",
     "k_RETURN_N1",
     "k_NEXT_N4",
-    "k_IF_N2",
+    "k_IF_N3",
+    "k_ON_GOTO_N2",
     "k_SET_ARR_ELEM_N2",
     "k_GET_ARR_ELEM_N2",
 #ifdef cfg_BYTE_ACCESS    
@@ -150,6 +163,9 @@ char *Opcodes[] = {
 #endif
     "k_POP_PUSH_N1",
     "k_FUNC_CALL",
+    "k_ERASE_ARR_N2",
+    "k_FREE_N1",
+    "k_RND_N1",
 #ifdef cfg_STRING_SUPPORT
     "k_ADD_STR_N1",
     "k_STR_EQUAL_N1",
@@ -185,3 +201,4 @@ uint16_t jbi_mem_alloc(t_VM *p_vm, uint16_t bytes);
 void jbi_mem_free(t_VM *p_vm, uint16_t addr);
 uint16_t jbi_mem_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes);
 uint16_t jbi_mem_get_blocksize(t_VM *p_vm, uint16_t addr);
+uint16_t jbi_mem_get_free(t_VM *p_vm);

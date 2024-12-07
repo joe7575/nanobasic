@@ -119,6 +119,16 @@ uint16_t jbi_mem_get_blocksize(t_VM *p_vm, uint16_t addr) {
     return (p_vm->heap[addr + 1] * sizeof(uint32_t)) - HEADER_SIZE;
 }
 
+uint16_t jbi_mem_get_free(t_VM *p_vm) {
+    uint16_t free = 0;
+    for(int i = p_vm->str_start_addr; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
+        if(p_vm->heap[i] == k_MEM_FREE_TAG) {
+            free += k_MEM_BLOCK_SIZE;
+        }
+    }
+    return free;
+}
+
 #define TEST
 #ifdef TEST
 void mem_dump(t_VM *p_vm) {

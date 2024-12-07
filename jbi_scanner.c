@@ -117,6 +117,12 @@ char *jbi_scanner(char *p_in, char *p_out) {
             return p_in;
         }
 
+        // End of string
+        if((c8 == '\n') || (c8 == '\r')) {
+            *p_out++ = '\0';
+            return NULL;
+        }
+        
         // Single character
         *p_out++ = c8;
         p_in++;

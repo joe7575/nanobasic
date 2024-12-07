@@ -62,15 +62,15 @@ int main(int argc, char* argv[]) {
     printf("Joes Basic Compiler V1.0\n");
 
     jbi_init();
-    //uint8_t *code = jbi_compiler("../temp.bas", &size, &num_vars);
-    //uint8_t *code = jbi_compiler("../lineno.bas", &size, &num_vars);
-    //uint8_t *code = jbi_compiler("../test.bas", &size, &num_vars);
-    uint8_t *code = jbi_compiler("../basis.bas", &size, &num_vars);
+    //uint8_t *code = jbi_compiler("../temp.bas", &size);
+    //uint8_t *code = jbi_compiler("../lineno.bas", &size);
+    uint8_t *code = jbi_compiler("../test.bas", &size);
+    //uint8_t *code = jbi_compiler("../basis.bas", &size);
 
     if(code == NULL) {
         return 1;
     }
-    //jbi_output_symbol_table();
+    jbi_output_symbol_table();
     on_can = jbi_get_label_address("200");
     if(on_can == 0) {
         on_can = jbi_get_label_address("on_can");
@@ -78,15 +78,16 @@ int main(int argc, char* argv[]) {
     buf1 = jbi_get_var_num("buf1");
 
     printf("\nJoes Basic Interpreter V1.0\n");
-    void *instance = jbi_create(num_vars, code);
-    //est_memory(instance);
+    void *instance = jbi_create(code);
+    //test_memory(instance);
     //return 0;
     jbi_dump_code(code, size);
+    num_vars = jbi_get_num_vars();
 
     while(res >= JBI_BUSY) {
         // A simple for loop "for i = 1 to 100: print i: next i" 
         // needs ~500 ticks or 1 second (50 cycles per 100 ms)
-        res = jbi_run(instance, code, size, 50);
+        res = jbi_run(instance, code, size, 50, num_vars);
         cycles += 50;
         msleep(100);
         if(res == JBI_CMD) {

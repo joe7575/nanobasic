@@ -59,10 +59,10 @@ k_LESS_N1          // ii (compare two values from stack)
 k_LESS_EQU_N1     // ii (compare two values from stack)
 k_GREATER_N1       // ii (compare two values from stack)
 k_GREATER_EQU_N1  // ii (compare two values from stack)
-k_GOTO_N2          // ii xx xx (16 bit programm address) 
-k_GOSUB_N2         // ii xx xx (16 bit programm address) 
+k_GOTO_N3          // ii xx xx (16 bit programm address) 
+k_GOSUB_N3         // ii xx xx (16 bit programm address) 
 k_RETURN_N1        // ii (pop return address)
-k_IF_N2            // ii xx xx (pop val, END address)
+k_IF_N3            // ii xx xx (pop val, END address)
 
 ii...instruction
 xx...8 bit value

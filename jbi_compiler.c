@@ -49,6 +49,9 @@ enum {
     GET2, GET4, LEFTS, RIGHTS,  // 164 - 167
     MIDS, LEN, VAL, STRS,       // 168 - 171
     SPC, STACK, COPY, CONST,    // 172 - 175
+    ERASE, ELSE, HEXS, CHRS,    // 176 - 179
+    INSTR, ON, TRON, TROFF,     // 180 - 183
+    FREE, RND,                  // 184 - 185
 };
 
 typedef enum type_t {
@@ -73,6 +76,9 @@ static char *Keywords[] = {
     "get2", "get4", "left$", "right$",
     "mid$", "len", "val", "str$",
     "spc", "stack", "copy", "const",
+    "erase", "else", "hex$", "chr$",
+    "instr", "on", "tron", "troff",
+    "free", "rnd",
 };
 
 // Symbol table
@@ -93,6 +99,7 @@ static uint16_t ErrCount = 0;
 static uint16_t SymIdx = 0;
 static uint16_t StartOfVars = 0;
 static uint16_t a_ForLoopStartAddr[cfg_MAX_FOR_LOOPS] = {0};
+static uint8_t  a_ForLoopVariables[cfg_MAX_FOR_LOOPS] = {0};
 static char a_Line[MAX_LINE_LEN];
 static char a_Buff[MAX_LINE_LEN];
 static char *p_pos = NULL;
@@ -100,6 +107,7 @@ static char *p_next = NULL;
 static uint32_t Value;
 static uint8_t NextTok;
 static uint8_t ForLoopIdx = 0;
+static bool TraceOn = false;
 
 static void compile(FILE *fp);
 static uint8_t next_token(void);
@@ -108,6 +116,7 @@ static uint8_t next(void);
 static void match(uint8_t expected);
 static void label(void);
 static void compile_line(void);
+static void compile_stmts(void);
 static void compile_stmt(void);
 static void compile_for(void);
 static void compile_next(void);
@@ -120,6 +129,7 @@ static void compile_dim(void);
 static void remark(void);
 static void compile_comment(void);
 static void compile_print(void);
+static void debug_print(uint16_t lineno);
 static void compile_string(void);
 static void compile_end(void);
 static void compile_cmd(void);
@@ -128,13 +138,20 @@ static void compile_set1(void);
 static void compile_set2(void);
 static void compile_set4(void);
 static void compile_copy(void);
+static void compile_set(uint8_t instr);
+static void compile_get(uint8_t tok, uint8_t instr);
 static void compile_const(void);
+static void compile_erase(void);
+static void compile_on(void);
+static uint8_t list_of_numbers(void);
+static void compile_tron(void);
+static void compile_troff(void);
+static void compile_free(void);
+static void compile_rnd(void);
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
 static uint16_t sym_get(char *id);
 static void error(char *fmt, ...);
 static char *token(uint8_t tok);
-static void compile_set(uint8_t instr);
-static void compile_get(uint8_t tok, uint8_t instr);
 static type_t compile_expression(type_t type);
 static type_t compile_and_expr(void);
 static type_t compile_not_expr(void);
@@ -151,7 +168,9 @@ void jbi_dump_code(uint8_t *code, uint16_t size) {
         printf("%02X ", code[i]);
         if((i % 32) == 31) {
             printf("\n");
-        }
+        } else if((i % 8) == 7) {
+            printf(": ");
+        } 
     }
     printf("\n");
 }
@@ -197,6 +216,18 @@ void jbi_init(void) {
     sym_add("stack", 0, STACK);
     sym_add("copy", 0, COPY);
     sym_add("const", 0, CONST);
+    sym_add("erase", 0, ERASE);
+    sym_add("else", 0, ELSE);
+    sym_add("hex$", 0, HEXS);
+    sym_add("chr$", 0, CHRS);
+    sym_add("instr", 0, INSTR);
+#ifdef cfg_ON_COMMANDS
+    sym_add("on", 0, ON);
+#endif     
+    sym_add("tron", 0, TRON);
+    sym_add("troff", 0, TROFF);
+    sym_add("free", 0, FREE);
+    sym_add("rnd", 0, RND);
     StartOfVars = CurrVarIdx;
     CurrVarIdx = 0;
     Pc = 0;
@@ -205,7 +236,7 @@ void jbi_init(void) {
     PcStart = Pc;
 }
 
-uint8_t *jbi_compiler(char *filename, uint16_t *p_len, uint8_t *p_num_vars) {
+uint8_t *jbi_compiler(char *filename, uint16_t *p_len) {
     FILE *fp = fopen(filename, "r");
     if(fp == NULL) {
         printf("Error: could not open file %s\n", filename);
@@ -217,7 +248,6 @@ uint8_t *jbi_compiler(char *filename, uint16_t *p_len, uint8_t *p_num_vars) {
 
     if(ErrCount > 0) {
         *p_len = 0;
-        *p_num_vars = 0;
         return NULL;
     }
 
@@ -227,17 +257,18 @@ uint8_t *jbi_compiler(char *filename, uint16_t *p_len, uint8_t *p_num_vars) {
     fclose(fp);
 
     *p_len = Pc;
-    *p_num_vars = CurrVarIdx;
     return a_Code;
 }
 
 void jbi_output_symbol_table(void) {
+    uint8_t idx = 0;
+
     printf("#### Symbol table ####\n");
     printf("Variables:\n");
     for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL)
         {
-            printf("%16s: %u\n", a_Symbol[i].name, a_Symbol[i].value);
+            printf("%2u: %8s\n", idx++, a_Symbol[i].name);
         }
     }
 #ifndef cfg_LINE_NUMBERS    
@@ -249,6 +280,18 @@ void jbi_output_symbol_table(void) {
         }
     }
 #endif
+}
+
+uint8_t jbi_get_num_vars(void) {
+    uint8_t idx = 0;
+
+    for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
+        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL)
+        {
+            idx++;
+        }
+    }
+    return idx;
 }
 
 uint16_t jbi_get_label_address(char *name) {
@@ -278,10 +321,13 @@ static void compile(FILE *fp) {
     Linenum = 0;
     ErrCount = 0;
     Pc = PcStart;
+    TraceOn = false;
 
     fseek(fp, 0, SEEK_SET);
     while(fgets(a_Line, MAX_LINE_LEN, fp) != NULL) {
+#ifndef cfg_LINE_NUMBERS        
         Linenum++;
+#endif
         p_pos = p_next = a_Line;
         compile_line();
     }
@@ -311,6 +357,9 @@ static uint8_t next_token(void) {
 
         SymIdx = sym_add(a_Buff, CurrVarIdx, type);
         return a_Symbol[SymIdx].type;
+    }
+    if(a_Buff[0] == '=') {
+        return EQ;
     }
     if(a_Buff[0] == '<') {
         // parse '<=' or '<'
@@ -376,27 +425,40 @@ static void label(void) {
 }
 
 static void compile_line(void) {
-    uint8_t tok = lookahead();
+    uint8_t tok;
+
+#ifdef cfg_LINE_NUMBERS    
+    tok = lookahead();
     if(tok == NUM) {
         match(NUM);
         Linenum = Value;
         sym_add(a_Buff, Pc, LABEL);
-        tok = lookahead();
-    } else if(tok == ID || tok == LABEL) {
+    }
+#else
+    tok = lookahead();
+    if(tok == ID || tok == LABEL) {
         uint16_t idx = SymIdx;
         label();
         tok = lookahead();
         if(tok == ':') {
             match(':');
             a_Symbol[idx].value = Pc;
-            tok = lookahead();
         }
     }
-    while(tok) {
+#endif
+    if(TraceOn) {
+        debug_print(Linenum);
+    }
+    compile_stmts();
+}
+
+static void compile_stmts(void) {
+    uint8_t tok = lookahead();
+    while(tok && tok != ELSE) {
         compile_stmt();
         tok = lookahead();
-        if(tok == ';') {
-            match(';');
+        if(tok == ':') {
+            match(':');
             tok = lookahead();
         }
     }
@@ -425,6 +487,13 @@ static void compile_stmt(void) {
     case COPY: compile_copy(); break;
 #endif
     case CONST: compile_const(); break;
+    case ERASE: compile_erase(); break;
+#ifdef cfg_ON_COMMANDS
+    case ON: compile_on(); break;
+#endif
+    case TRON: compile_tron(); break;
+    case TROFF: compile_troff(); break;
+    case FREE: compile_free(); break;
     default: error("unknown statement %s", token(tok)); break;
     }
 }
@@ -441,7 +510,7 @@ static void compile_for(void) {
     uint8_t tok;
     match(ID);
     uint16_t idx = SymIdx;
-    match('=');
+    match(EQ);
     compile_expression(e_NUM);
     a_Code[Pc++] = k_POP_VAR_N2;
     a_Code[Pc++] = a_Symbol[idx].value;
@@ -460,19 +529,30 @@ static void compile_for(void) {
         error("too many nested 'for' loops");
         return;
     }
+    a_ForLoopVariables[ForLoopIdx] = idx;
     a_ForLoopStartAddr[ForLoopIdx++] = Pc;
 }
 
 // ID =  ID + Step ID3            k_NEXT_N4 start var
 // ID <= ID2 GOTO start           
 static void compile_next(void) {
-    match(ID);
-    uint16_t idx = SymIdx;
+    uint8_t tok = lookahead();
+    uint16_t idx;
+    uint16_t addr;
+
     if(ForLoopIdx == 0) {
         error("'next' without 'for'");
         return;
     }
-    uint16_t addr = a_ForLoopStartAddr[--ForLoopIdx];
+    idx = a_ForLoopVariables[ForLoopIdx - 1];
+    if(tok == ID) {
+        match(ID);
+        if(idx != SymIdx) {
+            error("mismatched 'for' and 'next'");
+            return;
+        }
+    }
+    addr = a_ForLoopStartAddr[--ForLoopIdx];
     a_Code[Pc++] = k_NEXT_N4;
     a_Code[Pc++] = addr & 0xFF;
     a_Code[Pc++] = (addr >> 8) & 0xFF;
@@ -483,37 +563,57 @@ static void compile_if(void) {
     uint8_t tok, op;
 
     compile_expression(e_NUM);
-    a_Code[Pc++] = k_IF_N2;
+    a_Code[Pc++] = k_IF_N3;
     uint16_t pos = Pc;
     Pc += 2;
-    match(THEN);
-    compile_stmt();
-    a_Code[pos] = Pc & 0xFF;
-    a_Code[pos + 1] = (Pc >> 8) & 0xFF;
+    tok = lookahead();
+    if(tok == THEN) {
+        match(THEN);
+        compile_stmts();
+        ACS16(a_Code[pos]) = Pc;
+    } else if(tok == GOTO) {
+        match(GOTO);
+        compile_goto();
+        ACS16(a_Code[pos]) = Pc;
+    } else {
+        error("THEN or GOTO expected instead of '%s'", a_Buff);
+    }
+    tok = lookahead();
+    if(tok == ELSE) {
+        match(ELSE);
+        a_Code[Pc++] = k_GOTO_N3; // goto END
+        ACS16(a_Code[pos]) = Pc + 2;
+        pos = Pc;
+        Pc += 2;
+        compile_stmts();
+        ACS16(a_Code[pos]) = Pc;
+    }
 }
 
 static void compile_goto(void) {
-    uint8_t tok = lookahead();
     uint16_t addr;
-    if(tok == LABEL) {
-        label();
-        addr = a_Symbol[SymIdx].value;
-    }else if(tok == NUM) {
-        match(NUM);
-        addr = sym_get(a_Buff);
-    } else {
-        error("label or number expected instead of '%s'", a_Buff);
-        return;
-    }
-    a_Code[Pc++] = k_GOTO_N2;
+#ifdef cfg_LINE_NUMBERS
+    match(NUM);
+    addr = sym_get(a_Buff);
+#else
+    label();
+    addr = a_Symbol[SymIdx].value;
+#endif
+    a_Code[Pc++] = k_GOTO_N3;
     a_Code[Pc++] = addr & 0xFF;
     a_Code[Pc++] = (addr >> 8) & 0xFF;
 }
 
 static void compile_gosub(void) {
+    uint16_t addr;
+#ifdef cfg_LINE_NUMBERS
+    match(NUM);
+    addr = sym_get(a_Buff);
+#else
     label();
-    uint16_t addr = a_Symbol[SymIdx].value;
-    a_Code[Pc++] = k_GOSUB_N2;
+    addr = a_Symbol[SymIdx].value;
+#endif
+    a_Code[Pc++] = k_GOSUB_N3;
     a_Code[Pc++] = addr & 0xFF;
     a_Code[Pc++] = (addr >> 8) & 0xFF;
 }
@@ -528,13 +628,13 @@ static void compile_var(void) {
     type_t type;
 
     if(tok == SID) { // let a$ = "string"
-        match('=');
+        match(EQ);
         compile_expression(e_STR);
         // Var[value] = pop()
         a_Code[Pc++] = k_POP_STR_N2;
         a_Code[Pc++] = a_Symbol[idx].value;
     } else if(tok == ID) { // let a = expression
-        match('=');
+        match(EQ);
         type = compile_expression(e_ANY);
         if(type == e_NUM) {
             // Var[value] = pop()
@@ -552,7 +652,7 @@ static void compile_var(void) {
         match('(');
         compile_expression(e_NUM);
         match(')');
-        match('=');
+        match(EQ);
         compile_expression(e_NUM);
         a_Code[Pc++] = k_SET_ARR_ELEM_N2;
         a_Code[Pc++] = a_Symbol[idx].value;
@@ -583,12 +683,14 @@ static void remark(void) {
 
 static void compile_print(void) {
     type_t type;
+    bool add_newline = true;
     uint8_t tok = lookahead();
     if(tok == 0) {
         a_Code[Pc++] = k_PRINT_NEWL_N1;
         return;
     }
-    while(tok) {
+    while(tok && tok != ELSE) {
+        add_newline = true;
         if(tok == STR) {
             compile_string();
             a_Code[Pc++] = k_PRINT_STR_N1;
@@ -617,14 +719,25 @@ static void compile_print(void) {
         if(tok == ',') {
             match(',');
             a_Code[Pc++] = k_PRINT_TAB_N1;
+            add_newline = false;
             tok = lookahead();
         } else if(tok == ';') {
             match(';');
             tok = lookahead();
-        } else {
-            a_Code[Pc++] = k_PRINT_NEWL_N1;
+            add_newline = false;
+        } else if(tok && tok != ELSE) {
+            a_Code[Pc++] = k_PRINT_SPACE_N1;
         }
     }
+    if(add_newline) {
+        a_Code[Pc++] = k_PRINT_NEWL_N1;
+    }
+}
+
+static void debug_print(uint16_t lineno) {
+    a_Code[Pc++] = k_PRINT_LINENO_N3;
+    a_Code[Pc++] = lineno & 0xFF;
+    a_Code[Pc++] = (lineno >> 8) & 0xFF;
 }
 
 static void compile_string(void) {
@@ -681,15 +794,106 @@ static void compile_copy(void) {
     match(')');
     a_Code[Pc++] = k_COPY_N1;
 }
+
+static void compile_set(uint8_t instr) {
+    uint8_t idx;
+    match('(');
+    match(ARR);
+    idx = SymIdx;
+    match(',');
+    compile_expression(e_NUM);
+    match(',');
+    compile_expression(e_NUM);
+    match(')');
+    a_Code[Pc++] = instr;
+    a_Code[Pc++] = a_Symbol[idx].value;
+}
+
+static void compile_get(uint8_t tok, uint8_t instr) {
+    uint8_t idx, type;
+    match(tok);
+    match('(');
+    match(ARR);
+    idx = SymIdx;
+    match(',');
+    type = compile_expression(e_NUM);
+    match(')');
+    a_Code[Pc++] = instr;
+    a_Code[Pc++] = a_Symbol[idx].value;
+}
 #endif
 
 static void compile_const(void) {
     uint8_t tok = next();
     uint16_t idx = SymIdx;
-    match('=');
+    match(EQ);
     match(NUM);
     a_Symbol[idx].type = e_CNST;
     a_Symbol[idx].value = Value;
+}
+
+static void compile_erase(void) {
+    uint8_t tok = next();
+    if(tok == ID || tok == ARR) {
+        a_Code[Pc++] = k_ERASE_ARR_N2;
+        a_Code[Pc++] = a_Symbol[SymIdx].value;
+    } else {
+        error("unknown variable type '%u'", tok);
+    }
+}
+
+#ifdef cfg_ON_COMMANDS
+static void compile_on(void) {
+    uint16_t pos;
+    uint8_t num;
+
+    compile_expression(e_NUM);
+    uint8_t tok = lookahead();
+    if(tok == GOSUB) {
+        match(GOSUB);
+        a_Code[Pc++] = k_ON_GOSUB_N2;
+    } else if(tok == GOTO) {
+        match(GOTO);
+        a_Code[Pc++] = k_ON_GOTO_N2;
+    } else {
+        error("GOSUB or GOTO expected instead of '%s'", a_Buff);
+        return;
+    }
+    pos = Pc;
+    a_Code[Pc++] = 0; // number of elements
+    num = list_of_numbers();
+    a_Code[pos] = num;
+}
+
+static uint8_t list_of_numbers(void) {
+    uint8_t num = 0;
+
+    while(1) {
+        compile_goto(); 
+        num++;
+        uint8_t tok = lookahead();
+        if(tok == ',') {
+            match(',');
+        } else {
+            break;
+        }
+    }
+    return num;
+}
+#endif
+
+static void compile_tron(void) {
+    TraceOn = true;
+}
+
+static void compile_troff(void) {
+    TraceOn = false;
+}
+
+static void compile_free(void) {
+    match('(');
+    match(')');
+    a_Code[Pc++] = k_FREE_N1;
 }
 
 /**************************************************************************************************
@@ -776,35 +980,6 @@ static char *token(uint8_t tok) {
         return s;
     }
 } 
-
-#ifdef cfg_BYTE_ACCESS    
-static void compile_set(uint8_t instr) {
-    uint8_t idx;
-    match('(');
-    match(ARR);
-    idx = SymIdx;
-    match(',');
-    compile_expression(e_NUM);
-    match(',');
-    compile_expression(e_NUM);
-    match(')');
-    a_Code[Pc++] = instr;
-    a_Code[Pc++] = a_Symbol[idx].value;
-}
-
-static void compile_get(uint8_t tok, uint8_t instr) {
-    uint8_t idx, type;
-    match(tok);
-    match('(');
-    match(ARR);
-    idx = SymIdx;
-    match(',');
-    type = compile_expression(e_NUM);
-    match(')');
-    a_Code[Pc++] = instr;
-    a_Code[Pc++] = a_Symbol[idx].value;
-}
-#endif
 
 /**************************************************************************************************
  * Expression compiler
@@ -964,7 +1139,7 @@ static type_t compile_factor(void) {
     switch(tok) {
     case '(':
         match('(');
-        compile_expression(e_NUM);
+        type = compile_expression(e_NUM);
         match(')');
         break;
     case e_CNST:
@@ -1119,6 +1294,37 @@ static type_t compile_factor(void) {
         a_Code[Pc++] = k_VAL_TO_STR_N2;
         type = e_STR;
         break;
+    case HEXS: // hex function
+        match(HEXS);
+        match('(');
+        compile_expression(e_NUM);
+        match(')');
+        a_Code[Pc++] = k_FUNC_CALL;
+        a_Code[Pc++] = k_VAL_TO_HEX_N2;
+        type = e_STR;
+        break;
+    case CHRS: // chr$ function
+        match(CHRS);
+        match('(');
+        compile_expression(e_NUM);
+        match(')');
+        a_Code[Pc++] = k_FUNC_CALL;
+        a_Code[Pc++] = k_VAL_TO_CHR_N2;
+        type = e_STR;
+        break;
+    case INSTR: // instr function
+        match(INSTR);
+        match('(');
+        compile_expression(e_NUM);
+        match(',');
+        compile_expression(e_STR);
+        match(',');
+        compile_expression(e_STR);
+        match(')');
+        a_Code[Pc++] = k_FUNC_CALL;
+        a_Code[Pc++] = k_INSTR_N2;
+        type = e_NUM;
+        break;
 #endif        
     case STACK: // Move value from (external) parameter stack to the data stack
         match(STACK);
@@ -1126,6 +1332,16 @@ static type_t compile_factor(void) {
         match(')');
         a_Code[Pc++] = k_POP_PUSH_N1;
         type = e_NUM;
+        break;
+    case RND: // Random number
+        match(RND);
+        match('(');
+        compile_expression(e_NUM);
+        match(')');
+        a_Code[Pc++] = k_RND_N1;
+        type = e_NUM;
+        break;
+    case ELSE:
         break;
     default:
         error("unknown factor '%u'", tok);

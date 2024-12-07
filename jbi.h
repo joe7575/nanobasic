@@ -32,14 +32,15 @@ enum {
 };
 
 void jbi_init(void);
-uint8_t *jbi_compiler(char *filename, uint16_t *p_len, uint8_t *p_num_vars);
-void *jbi_create(uint8_t num_vars, uint8_t* p_programm);
-uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles);
+uint8_t *jbi_compiler(char *filename, uint16_t *p_len);
+void *jbi_create(uint8_t* p_programm);
+uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles, uint8_t num_vars);
 void jbi_destroy(void * pv_vm);
 
 void jbi_dump_code(uint8_t *code, uint16_t size);
 void jbi_output_symbol_table(void);
 
+uint8_t jbi_get_num_vars(void);
 uint16_t jbi_get_var_num(char *name);
 uint16_t jbi_get_label_address(char *name);
 uint32_t *jbi_get_var_address(void *pv_vm, uint8_t var);
