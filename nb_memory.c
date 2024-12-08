@@ -129,29 +129,28 @@ uint16_t nb_mem_get_free(t_VM *p_vm) {
     return free;
 }
 
-#define TEST
 #ifdef TEST
 void mem_dump(t_VM *p_vm) {
     uint8_t num_blocks = 0;
 
-    printf("Memory dump:\n");
+    nb_print("Memory dump:\n");
     for(int i = 0; i < 512; i += k_MEM_BLOCK_SIZE) {
         if(num_blocks == 0) {
             num_blocks = p_vm->heap[i];
-            printf("%02d ", num_blocks);
+            nb_print("%02d ", num_blocks);
             if(num_blocks > 0) {
                 num_blocks--;
             }
         }
         else {
             num_blocks--;
-            printf("xx ");
+            nb_print("xx ");
         }
         if((i + k_MEM_BLOCK_SIZE) % (k_MEM_BLOCK_SIZE * 32) == 0) {
-            printf("\n");
+            nb_print("\n");
         }
     }
-    printf("\n");
+    nb_print("\n");
 }
 
 void test_memory(t_VM *p_vm) {
@@ -192,5 +191,11 @@ void test_memory(t_VM *p_vm) {
     assert((addr2 = nb_mem_alloc(p_vm, 12)) == 0x8012);
     assert((addr2 = nb_mem_realloc(p_vm, addr2, 30)) == 0x8022);
     mem_dump(p_vm);
+}
+
+int main(void) {
+    t_VM vm;
+    test_memory(&vm);
+    return 0;
 }
 #endif

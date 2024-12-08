@@ -23,36 +23,44 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <stdbool.h>
 #include "nb_cfg.h"
 
+// Data types for 'nb_define_external_function()'
 #define NB_NUM      (1)
 #define NB_STR      (2)
 #define NB_ARR      (3)
 
+// Return values of 'nb_run()'
 enum {
   NB_END = 0,  // programm end reached
   NB_ERROR,    // error in programm
-  NB_BUSY,     // programm still willing to run
-  NB_XFUNC,    // 'call' external function
+  NB_BUSY,     // programm still running
   NB_BREAK,    // break command
+  NB_XFUNC,    // 'call' external function
 };
 
-extern uint8_t nb_ReturnValue;
+// To be implemented by the user
+void nb_reset_file_pos(void *fp);
+char *nb_get_code_line(void *fp, char *line, int max_line_len);
+void nb_print(const char * format, ...);
 
+// Compiler
 void nb_init(void);
 uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type);
-uint8_t *nb_compiler(char *filename, uint16_t *p_len);
-void *nb_create(uint8_t* p_programm);
-uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles, uint8_t num_vars);
+uint16_t nb_compile(void *fp, uint8_t *p_code, uint16_t *p_code_size, uint8_t *p_num_vars);
+
+// Interpreter
+void *nb_create(uint8_t* p_programm, uint16_t code_size, uint16_t max_code_size, uint8_t num_vars);
+uint16_t nb_run(void *pv_vm, uint16_t cycles);
 void nb_destroy(void * pv_vm);
 
+// Helper functions
 void nb_dump_code(uint8_t *code, uint16_t size);
 void nb_output_symbol_table(void);
 
-uint8_t nb_get_num_vars(void);
-uint16_t nb_get_var_num(char *name);
+// Call a function in the VM
 uint16_t nb_get_label_address(char *name);
-
 void nb_set_pc(void * pv_vm, uint16_t addr);
 
+// Stack/parameter functions
 uint8_t nb_stack_depth(void *pv_vm);
 uint32_t nb_pop_num(void *pv_vm);
 void nb_push_num(void *pv_vm, uint32_t value);

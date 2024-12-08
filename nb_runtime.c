@@ -28,14 +28,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "nb.h"
 #include "nb_int.h"
 
-// PRINTF via UART
-#if defined(_WIN32) || defined(WIN32) || defined(__linux__)
-    #define PRINTF printf
-#else
-    #include "fsl_debug_console.h"
-    #include "board.h"
-#endif
-
 #define DPUSH(x) vm->datastack[(uint8_t)(vm->dsp++) % cfg_DATASTACK_SIZE] = x
 #define DPOP() vm->datastack[(uint8_t)(--vm->dsp) % cfg_DATASTACK_SIZE]
 #define DTOP() vm->datastack[(uint8_t)(vm->dsp - 1) % cfg_DATASTACK_SIZE]
@@ -49,8 +41,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define STR(x) (x >= 0x8000 ? (char*)&vm->heap[x & 0x7FFF] : (char*)&vm->p_programm[x])
 
-uint8_t nb_ReturnValue = 0;
-
 /***************************************************************************************************
 **    static function-prototypes
 ***************************************************************************************************/
@@ -58,7 +48,7 @@ uint8_t nb_ReturnValue = 0;
 /***************************************************************************************************
 **    global functions
 ***************************************************************************************************/
-void *nb_create(uint8_t* p_programm) {
+void *nb_create(uint8_t* p_programm, uint16_t code_size, uint16_t max_code_size, uint8_t num_vars) {
     t_VM *vm = malloc(sizeof(t_VM));
     memset(vm, 0, sizeof(t_VM));
     nb_mem_init(vm);
@@ -66,6 +56,10 @@ void *nb_create(uint8_t* p_programm) {
     assert(p_programm[0] == k_TAG);
     assert(p_programm[1] == k_VERSION);
     vm->pc = 2;
+    vm->p_programm = p_programm;
+    vm->code_size = code_size;
+    vm->max_code_size = max_code_size;
+    vm->num_vars = num_vars;
     return vm;
 }
 
@@ -100,7 +94,7 @@ void nb_push_str(void *pv_vm, char *str) {
         uint16_t len = strlen(str);
         uint16_t addr = nb_mem_alloc(vm, len + 1);
         if(addr == 0) {
-            PRINTF("Error: Out of memory\n");
+            nb_print("Error: Out of memory\n");
             return;
         }
         strcpy(&vm->heap[addr & 0x7FFF], str);
@@ -126,7 +120,7 @@ void nb_push_arr(void *pv_vm, uint32_t *arr, uint8_t len) {
         uint16_t size = len * sizeof(uint32_t);
         uint16_t addr = nb_mem_alloc(vm, size);
         if(addr == 0) {
-            PRINTF("Error: Out of memory\n");
+            nb_print("Error: Out of memory\n");
             return;
         }
         memcpy(&vm->heap[addr & 0x7FFF], arr, size);
@@ -145,26 +139,7 @@ void nb_set_pc(void * pv_vm, uint16_t addr) {
     vm->pc = addr;
 }
 
-/***************************************************************************************************
-  Function:
-    nb_run
-
-  Description:
-    Run the Tiny Basic Interpreter with the given program.
-    Some measures:
-    - run nb_run with an empty program: 680 ticks
-    - run nb_run with a program with 20 instructions: ~1200 ticks
-    => Each instruction needs 26 ticks or 16 ns (for 160 MHz)
-    => Currently needs 0x350 bytes of code space
-
-  Parameters:
-    program  (IN) - pointer to the program
-
-  Return value:
-    Number of executed instructions
-
-***************************************************************************************************/
-uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles, uint8_t num_vars) {
+uint16_t nb_run(void *pv_vm, uint16_t cycles) {
     uint32_t tmp1, tmp2;
     uint16_t idx;
     uint16_t addr, addr2, size;
@@ -174,75 +149,71 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
     uint8_t  *ptr;
     char     *str;
     t_VM *vm = pv_vm;
-    vm->p_programm = p_programm;
 
     for(uint16_t i = 0; i < cycles; i++)
     {
-#ifdef DEBUG    
-        printf("%04X: %02X %02X %02X\n", vm->pc, p_programm[vm->pc], p_programm[vm->pc + 1], p_programm[vm->pc + 2]);
-#endif
-        switch (p_programm[vm->pc])
+        switch (vm->p_programm[vm->pc])
         {
         case k_END:
             return NB_END;
         case k_PRINT_STR_N1:
             tmp1 = DPOP();
-            PRINTF("%s", STR(tmp1));
+            nb_print("%s", STR(tmp1));
             vm->pc += 1;
             break;
         case k_PRINT_VAL_N1:
-            PRINTF("%d", DPOP());
+            nb_print("%d", DPOP());
             vm->pc += 1;
             break;
         case k_PRINT_NEWL_N1:
-            PRINTF("\n");
+            nb_print("\n");
             vm->pc += 1;
             break;
         case k_PRINT_TAB_N1:
-            PRINTF("\t");
+            nb_print("\t");
             vm->pc += 1;
             break;
         case k_PRINT_SPACE_N1:
-            PRINTF(" ");
+            nb_print(" ");
             vm->pc += 1;
             break;
         case k_PRINT_BLANKS_N1:
             val = DPOP();
             for(uint8_t i = 0; i < val; i++) {
-                PRINTF(" ");
+                nb_print(" ");
             }
             vm->pc += 1;
             break;
         case k_PRINT_LINENO_N3:
-            tmp1 = ACS16(p_programm[vm->pc + 1]);
-            PRINTF("[%u] ", tmp1);
+            tmp1 = ACS16(vm->p_programm[vm->pc + 1]);
+            nb_print("[%u] ", tmp1);
             vm->pc += 3;
             break;
         case k_PUSH_STR_Nx:
-            tmp1 = p_programm[vm->pc + 1]; // string length
+            tmp1 = vm->p_programm[vm->pc + 1]; // string length
             DPUSH(vm->pc + 2);  // push string address
             vm->pc += tmp1 + 2;
             break;
         case k_PUSH_NUM_N5:
-            DPUSH(ACS32(p_programm[vm->pc + 1]));
+            DPUSH(ACS32(vm->p_programm[vm->pc + 1]));
             vm->pc += 5;
             break;
         case k_PUSH_NUM_N2:
-            DPUSH(p_programm[vm->pc + 1]);
+            DPUSH(vm->p_programm[vm->pc + 1]);
             vm->pc += 2;
             break;
         case k_PUSH_VAR_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             DPUSH(vm->variables[var]);
             vm->pc += 2;
             break;
         case k_POP_VAR_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             vm->variables[var] = DPOP();
             vm->pc += 2;
             break;
         case k_POP_STR_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             if(vm->variables[var] > 0) {
                 nb_mem_free(vm, vm->variables[var]);
             }
@@ -250,11 +221,11 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             vm->pc += 2;
             break;
         case k_DIM_ARR_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             size = DPOP();
             addr = nb_mem_alloc(vm, (size + 1) * sizeof(uint32_t));
             if(addr == 0) {
-                PRINTF("Error: Out of memory\n");
+                nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
             memset(&vm->heap[addr & 0x7FFF], 0, size * sizeof(uint32_t));
@@ -282,7 +253,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
         case k_DIV_N1:
             tmp2 = DPOP();
             if(tmp2 == 0) {
-              PRINTF("Error: Division by zero\n");
+              nb_print("Error: Division by zero\n");
               DPUSH(0);
             } else {
               DTOP() = DTOP() / tmp2;
@@ -344,11 +315,11 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             vm->pc += 1;
             break;
         case k_GOTO_N3:
-            vm->pc = ACS16(p_programm[vm->pc + 1]);
+            vm->pc = ACS16(vm->p_programm[vm->pc + 1]);
             break;
         case k_GOSUB_N3:
             CPUSH(vm->pc + 3);
-            vm->pc = ACS16(p_programm[vm->pc + 1]);
+            vm->pc = ACS16(vm->p_programm[vm->pc + 1]);
             break;
         case k_RETURN_N1:
             vm->pc = (uint16_t)CPOP();
@@ -356,8 +327,8 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
         case k_NEXT_N4:
             // ID = ID + stack[-1]
             // IF ID <= stack[-2] GOTO start
-            tmp1 = ACS16(p_programm[vm->pc + 1]);
-            var = p_programm[vm->pc + 3];
+            tmp1 = ACS16(vm->p_programm[vm->pc + 1]);
+            var = vm->p_programm[vm->pc + 3];
             vm->variables[var] = vm->variables[var] + DTOP();
             if(vm->variables[var] <= DPEEK(-2)) {
               vm->pc = tmp1;
@@ -369,7 +340,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             break;
         case k_IF_N3:
             if(DPOP() == 0) {
-              vm->pc = ACS16(p_programm[vm->pc + 1]);
+              vm->pc = ACS16(vm->p_programm[vm->pc + 1]);
             } else {
               vm->pc += 3;
             }
@@ -377,7 +348,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
 #ifdef cfg_ON_COMMANDS
         case k_ON_GOTO_N2:
             idx = DPOP();
-            val = p_programm[vm->pc + 1];
+            val = vm->p_programm[vm->pc + 1];
             vm->pc += 2;
             if(idx == 0 || idx > val) {
                 vm->pc += val * 3;
@@ -387,7 +358,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             break;
         case k_ON_GOSUB_N2:
             idx = DPOP();
-            val = p_programm[vm->pc + 1];
+            val = vm->p_programm[vm->pc + 1];
             vm->pc += 2;
             if(idx == 0 || idx > val) {
                 vm->pc += val * 3;  // skip all addresses
@@ -398,23 +369,23 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             break;
 #endif
         case k_SET_ARR_ELEM_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             tmp2 = DPOP() * sizeof(uint32_t);
             if(tmp2 >= nb_mem_get_blocksize(vm, addr)) {
-                PRINTF("Error: Array index out of bounds\n");
+                nb_print("Error: Array index out of bounds\n");
                 return NB_ERROR;
             }
             ACS32(vm->heap[addr + tmp2]) = tmp1;
             vm->pc += 2;
             break;
         case k_GET_ARR_ELEM_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP() * sizeof(uint32_t);
             if(tmp1 >= nb_mem_get_blocksize(vm, addr)) {
-                PRINTF("Error: Array index out of bounds\n");
+                nb_print("Error: Array index out of bounds\n");
                 return NB_ERROR;
             }
             DPUSH(ACS32(vm->heap[addr + tmp1]));
@@ -422,69 +393,69 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             break;
 #ifdef cfg_BYTE_ACCESS            
         case k_SET_ARR_1BYTE_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             tmp2 = DPOP();
             if(tmp2 >= nb_mem_get_blocksize(vm, addr)) {
-                PRINTF("Error: Array index out of bounds\n");
+                nb_print("Error: Array index out of bounds\n");
                 return NB_ERROR;
             }
             ACS8(vm->heap[addr + tmp2]) = tmp1;
             vm->pc += 2;
             break;
         case k_GET_ARR_1BYTE_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             if(tmp1 >= nb_mem_get_blocksize(vm, addr)) {
-                PRINTF("Error: Array index out of bounds\n");
+                nb_print("Error: Array index out of bounds\n");
                 return NB_ERROR;
             }
             DPUSH(ACS8(vm->heap[addr + tmp1]));
             vm->pc += 2;
             break;
         case k_SET_ARR_2BYTE_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             tmp2 = DPOP();
             if(tmp2 + 1 >= nb_mem_get_blocksize(vm, addr)) {
-                PRINTF("Error: Array index out of bounds\n");
+                nb_print("Error: Array index out of bounds\n");
                 return NB_ERROR;
             }
             ACS16(vm->heap[addr + tmp2]) = tmp1;
             vm->pc += 2;
             break;
         case k_GET_ARR_2BYTE_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             if(tmp1 + 1 >= nb_mem_get_blocksize(vm, addr)) {
-                PRINTF("Error: Array index out of bounds\n");
+                nb_print("Error: Array index out of bounds\n");
                 return NB_ERROR;
             }
             DPUSH(ACS16(vm->heap[addr + tmp1]));
             vm->pc += 2;
             break;
         case k_SET_ARR_4BYTE_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             tmp2 = DPOP();
             if(tmp2 + 3 >= nb_mem_get_blocksize(vm, addr)) {
-                PRINTF("Error: Array index out of bounds\n");
+                nb_print("Error: Array index out of bounds\n");
                 return NB_ERROR;
             }
             ACS32(vm->heap[addr + tmp2]) = tmp1;
             vm->pc += 2;
             break;
         case k_GET_ARR_4BYTE_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             if(tmp1 + 3 >= nb_mem_get_blocksize(vm, addr)) {
-                PRINTF("Error: Array index out of bounds\n");
+                nb_print("Error: Array index out of bounds\n");
                 return NB_ERROR;
             }
             DPUSH(ACS32(vm->heap[addr + tmp1]));
@@ -500,7 +471,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             size1 = nb_mem_get_blocksize(vm, tmp1);
             size2 = nb_mem_get_blocksize(vm, tmp2);
             if(size + offs1 > size1 || size + offs2 > size2) {
-                PRINTF("Error: Array index out of bounds\n");
+                nb_print("Error: Array index out of bounds\n");
                 return NB_ERROR;
             }
             memcpy(&vm->heap[tmp1 + offs1], &vm->heap[tmp2 + offs2], size);
@@ -517,15 +488,15 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             vm->pc += 1;
             break;
         case k_XFUNC_N2:
-            nb_ReturnValue = p_programm[vm->pc + 1];
+            val = vm->p_programm[vm->pc + 1];
             vm->pc += 2;
-            return NB_XFUNC;
+            return NB_XFUNC + val;
         case k_PUSH_PARAM_N1:
             PPUSH(DPOP());
             vm->pc += 1;
             break;
         case k_ERASE_ARR_N2:
-            var = p_programm[vm->pc + 1];
+            var = vm->p_programm[vm->pc + 1];
             addr = vm->variables[var];
             if(addr > 0) {
                 nb_mem_free(vm, addr);
@@ -535,9 +506,8 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             break;
         case k_FREE_N1:
             tmp1 = sizeof(vm->variables) / sizeof(vm->variables[0]);
-            PRINTF(" Code: %u/%u, Data: %u/%u, Heap: %u/%u\n", cfg_MAX_CODE_LEN - len, cfg_MAX_CODE_LEN, 
-                                                               tmp1 - num_vars, tmp1,
-                                                               nb_mem_get_free(vm), cfg_MEM_HEAP_SIZE);
+            nb_print(" Code=%u, data=%u, heap=%u bytes free\n", vm->max_code_size - vm->code_size,
+                tmp1 - vm->num_vars, nb_mem_get_free(vm));
         case k_RND_N1:
             tmp1 = DPOP();
             if(tmp1 == 0) {
@@ -554,7 +524,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             uint8_t len = strlen(STR(tmp1)) + strlen(STR(tmp2)) + 1;
             addr = nb_mem_alloc(vm, len);
             if(addr == 0) {
-                PRINTF("Error: Out of memory\n");
+                nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
             strcpy(&vm->heap[addr & 0x7FFF], STR(tmp1));
@@ -602,7 +572,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             tmp1 = DPOP();  // string address
             addr = nb_mem_alloc(vm, tmp2 + 1);
             if(addr == 0) {
-                PRINTF("Error: Out of memory\n");
+                nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
             strncpy(&vm->heap[addr & 0x7FFF], STR(tmp1), tmp2);
@@ -614,7 +584,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             tmp1 = DPOP();  // string address
             addr = nb_mem_alloc(vm, tmp2 + 1);
             if(addr == 0) {
-                PRINTF("Error: Out of memory\n");
+                nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
             strncpy(&vm->heap[addr & 0x7FFF], STR(tmp1) + strlen(STR(tmp1)) - tmp2, tmp2);
@@ -627,7 +597,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             idx = DPOP();   // string address
             addr = nb_mem_alloc(vm, tmp2 + 1);
             if(addr == 0) {
-                PRINTF("Error: Out of memory\n");
+                nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
             strncpy(&vm->heap[addr & 0x7FFF], STR(idx) + tmp1, tmp2);
@@ -648,7 +618,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             tmp1 = DPOP();
             addr = nb_mem_alloc(vm, 14);
             if(addr == 0) {
-                PRINTF("Error: Out of memory\n");
+                nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
             sprintf(&vm->heap[addr & 0x7FFF], "%d", tmp1);
@@ -659,7 +629,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             tmp1 = DPOP();
             addr = nb_mem_alloc(vm, 14);
             if(addr == 0) {
-                PRINTF("Error: Out of memory\n");
+                nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
             sprintf(&vm->heap[addr & 0x7FFF], "%X", tmp1);
@@ -670,7 +640,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             tmp1 = DPOP();
             addr = nb_mem_alloc(vm, 2);
             if(addr == 0) {
-                PRINTF("Error: Out of memory\n");
+                nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
             vm->heap[addr & 0x7FFF] = tmp1;
@@ -694,7 +664,7 @@ uint16_t nb_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles,
             break;
 #endif
         default:
-            PRINTF("Error: unknown opcode '%u'\n", p_programm[vm->pc]);
+            nb_print("Error: unknown opcode '%u'\n", vm->p_programm[vm->pc]);
             return NB_ERROR;
         }
     }

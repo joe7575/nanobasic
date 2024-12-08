@@ -145,21 +145,21 @@ int main(void) {
 
     while(*p != 0) {
         p = nb_scanner(p,t);
-        printf("%s\n",t);
+        nb_print("%s\n",t);
     }
 
     strcpy(s,"\"Hello World\"");
     p = s;
     while(*p != 0) {
         p = nb_scanner(p,t);
-        printf("%s\n",t);
+        nb_print("%s\n",t);
     }
     
     strcpy(s,"A=1234*2-1");
     p = s;
     while(*p != 0) {
         p = nb_scanner(p,t);
-        printf("%s\n",t);
+        nb_print("%s\n",t);
     }
 
     return 0;

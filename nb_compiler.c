@@ -28,14 +28,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "nb.h"
 #include "nb_int.h"
 
-//#define DEBUG
-
 #define MAX_LINE_LEN        256
 #define MAX_SYM_LEN         8
 #define MAX_XFUNC_PARAMS    8
 #define MAX_NUM_XFUNC       16
-
-#define MIN(a,b)        ((a) < (b) ? (a) : (b))
+#define MAX_CODE_PER_LINE   50 // aprox. max. 50 bytes per line
 
 // Token types
 enum {
@@ -56,6 +53,7 @@ enum {
     FREE, RND,                  // 184 - 185
 };
 
+// Expression result types
 typedef enum type_t {
     e_ANY = 0,
     e_NUM = NB_NUM,
@@ -64,31 +62,10 @@ typedef enum type_t {
     e_CNST,
 } type_t;
 
-#if 0
-// Keywords
-static char *Keywords[] = {
-    "let", "dim", "for", "to",
-    "step", "next", "if", "then",
-    "print", "goto", "gosub", "return",
-    "end", "rem", "and", "or",
-    "not", "mod", "number", "string",
-    "variable", "string variable", "=", "<>",
-    "<", "<=", ">", ">=",
-    "xfunc", "array", "break", "label",
-    "set1", "set2", "set4", "get1",
-    "get2", "get4", "left$", "right$",
-    "mid$", "len", "val", "str$",
-    "spc", "stack", "copy", "const",
-    "erase", "else", "hex$", "chr$",
-    "instr", "on", "tron", "troff",
-    "free", "rnd",
-};
-#endif
-
 // Symbol table
 typedef struct {
     char name[MAX_SYM_LEN];
-    uint8_t  type;   // ID, NUM, IF,...
+    uint8_t  type;   // Token type
     uint8_t  res;    // Reserved for future use
     uint16_t value;  // Variable index (0..n) or label address
 } sym_t;
@@ -97,14 +74,15 @@ typedef struct {
 typedef struct {
     uint8_t num_params;
     uint8_t return_type;
-    uint8_t type[MAX_XFUNC_PARAMS];];
+    uint8_t type[MAX_XFUNC_PARAMS];
 } xfunc_t;
 
 static xfunc_t a_XFuncs[MAX_NUM_XFUNC] = {0};
 static uint8_t NumXFuncs = 0;
 static sym_t a_Symbol[cfg_MAX_NUM_SYM] = {0};
 static uint8_t CurrVarIdx = 0;
-static uint8_t a_Code[cfg_MAX_CODE_LEN];
+static uint8_t *p_Code;
+static uint16_t MaxCodeSize = 0;
 static uint16_t Pc = 0;
 static uint16_t PcStart = 0;
 static uint16_t Linenum = 0;
@@ -122,7 +100,7 @@ static uint8_t NextTok;
 static uint8_t ForLoopIdx = 0;
 static bool TraceOn = false;
 
-static void compile(FILE *fp);
+static void compile(void *fp);
 static uint8_t next_token(void);
 static uint8_t lookahead(void);
 static uint8_t next(void);
@@ -164,7 +142,7 @@ static void compile_rnd(void);
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
 static uint16_t sym_get(char *id);
 static void error(char *fmt, ...);
-//static char *token(uint8_t tok);
+static uint8_t get_num_vars(void);
 static type_t compile_expression(type_t type);
 static type_t compile_and_expr(void);
 static type_t compile_not_expr(void);
@@ -176,15 +154,6 @@ static type_t compile_factor(void);
 /*************************************************************************************************
 ** API functions
 *************************************************************************************************/
-void nb_dump_code(uint8_t *code, uint16_t size) {
-    for(uint16_t i = 0; i < size; i++) {
-        printf("%02X ", code[i]);
-        if((i % 32) == 31) {
-            printf("\n");
-        } 
-    }
-    printf("\n");
-}
 void nb_init(void) {
     // Add keywords
     sym_add("let", 0, LET);
@@ -238,12 +207,6 @@ void nb_init(void) {
     sym_add("troff", 0, TROFF);
     sym_add("free", 0, FREE);
     sym_add("rnd", 0, RND);
-    StartOfVars = CurrVarIdx;
-    CurrVarIdx = 0;
-    Pc = 0;
-    a_Code[Pc++] = k_TAG;
-    a_Code[Pc++] = k_VERSION;
-    PcStart = Pc;
 }
 
 uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type) {
@@ -262,62 +225,61 @@ uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *typ
     return NumXFuncs++;
 }
 
-uint8_t *nb_compile(char *filename, uint16_t *p_len) {
-    FILE *fp = fopen(filename, "r");
-    if(fp == NULL) {
-        printf("Error: could not open file %s\n", filename);
-        return NULL;
-    }
-
-    printf("- pass1\n");
+uint16_t nb_compile(void *fp, uint8_t *p_code, uint16_t *p_code_size, uint8_t *p_num_vars) {
+    nb_print("- pass1\n");
+    p_Code = p_code;
+    StartOfVars = CurrVarIdx;
+    CurrVarIdx = 0;
+    Pc = 0;
+    p_Code[Pc++] = k_TAG;
+    p_Code[Pc++] = k_VERSION;
+    PcStart = Pc;
+    MaxCodeSize = *p_code_size;
     compile(fp);
 
     if(ErrCount > 0) {
-        *p_len = 0;
-        return NULL;
+        *p_code_size = 0;
+        return ErrCount;
     }
 
-    printf("- pass2\n");
+    nb_print("- pass2\n");
     compile(fp);
 
-    fclose(fp);
+    *p_code_size = Pc;
+    *p_num_vars = get_num_vars();
+    return ErrCount;
+}
 
-    *p_len = Pc;
-    return a_Code;
+void nb_dump_code(uint8_t *code, uint16_t size) {
+    for(uint16_t i = 0; i < size; i++) {
+        nb_print("%02X ", code[i]);
+        if((i % 32) == 31) {
+            nb_print("\n");
+        } 
+    }
+    nb_print("\n");
 }
 
 void nb_output_symbol_table(void) {
     uint8_t idx = 0;
 
-    printf("#### Symbol table ####\n");
-    printf("Variables:\n");
+    nb_print("#### Symbol table ####\n");
+    nb_print("Variables:\n");
     for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL)
         {
-            printf("%2u: %8s\n", idx++, a_Symbol[i].name);
+            nb_print("%2u: %8s\n", idx++, a_Symbol[i].name);
         }
     }
 #ifndef cfg_LINE_NUMBERS    
-    printf("Labels:\n");
+    nb_print("Labels:\n");
     for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type == LABEL)
         {
-            printf("%16s: %u\n", a_Symbol[i].name, a_Symbol[i].value);
+            nb_print("%16s: %u\n", a_Symbol[i].name, a_Symbol[i].value);
         }
     }
 #endif
-}
-
-uint8_t nb_get_num_vars(void) {
-    uint8_t idx = 0;
-
-    for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
-        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL)
-        {
-            idx++;
-        }
-    }
-    return idx;
 }
 
 uint16_t nb_get_label_address(char *name) {
@@ -330,27 +292,17 @@ uint16_t nb_get_label_address(char *name) {
     return 0;
 }   
 
-uint16_t nb_get_var_num(char *name) {
-    for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
-        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL && strcmp(a_Symbol[i].name, name) == 0)
-        {
-            return a_Symbol[i].value;
-        }
-    }
-    return -1;
-}   
-
 /*************************************************************************************************
 ** Static functions
 *************************************************************************************************/
-static void compile(FILE *fp) {
+static void compile(void *fp) {
     Linenum = 0;
     ErrCount = 0;
     Pc = PcStart;
     TraceOn = false;
 
-    fseek(fp, 0, SEEK_SET);
-    while(fgets(a_Line, MAX_LINE_LEN, fp) != NULL) {
+    nb_reset_file_pos(fp);
+    while(nb_get_code_line(fp, a_Line, MAX_LINE_LEN) != NULL) {
 #ifndef cfg_LINE_NUMBERS        
         Linenum++;
 #endif
@@ -412,7 +364,7 @@ static uint8_t lookahead(void) {
     if(p_pos == p_next) {
        NextTok = next_token();
     }
-    //printf("lookahead: %s\n", a_Buff);
+    //nb_print("lookahead: %s\n", a_Buff);
     return NextTok;
 }
 
@@ -422,7 +374,7 @@ static uint8_t next(void) {
     }
     p_pos = p_next;
 #ifdef DEBUG
-    printf("next: %s\n", a_Buff);
+    nb_print("next: %s\n", a_Buff);
 #endif
     return NextTok;
 }
@@ -488,6 +440,10 @@ static void compile_stmts(void) {
             match(':');
             tok = lookahead();
         }
+        if(Pc >= MaxCodeSize - MAX_CODE_PER_LINE) {
+            error("code size exceeded");
+            break;
+        }
     }
 }
 
@@ -540,8 +496,8 @@ static void compile_for(void) {
     uint16_t idx = SymIdx;
     match(EQ);
     compile_expression(e_NUM);
-    a_Code[Pc++] = k_POP_VAR_N2;
-    a_Code[Pc++] = a_Symbol[idx].value;
+    p_Code[Pc++] = k_POP_VAR_N2;
+    p_Code[Pc++] = a_Symbol[idx].value;
     match(TO);
     compile_expression(e_NUM);
     tok = lookahead();
@@ -549,8 +505,8 @@ static void compile_for(void) {
         match(STEP);
         compile_expression(e_NUM);
     } else {
-        a_Code[Pc++] = k_PUSH_NUM_N2;
-        a_Code[Pc++] = 1;
+        p_Code[Pc++] = k_PUSH_NUM_N2;
+        p_Code[Pc++] = 1;
     }
     // Save start address
     if(ForLoopIdx >= cfg_MAX_FOR_LOOPS) {
@@ -581,40 +537,40 @@ static void compile_next(void) {
         }
     }
     addr = a_ForLoopStartAddr[--ForLoopIdx];
-    a_Code[Pc++] = k_NEXT_N4;
-    a_Code[Pc++] = addr & 0xFF;
-    a_Code[Pc++] = (addr >> 8) & 0xFF;
-    a_Code[Pc++] = a_Symbol[idx].value;
+    p_Code[Pc++] = k_NEXT_N4;
+    p_Code[Pc++] = addr & 0xFF;
+    p_Code[Pc++] = (addr >> 8) & 0xFF;
+    p_Code[Pc++] = a_Symbol[idx].value;
 }
 
 static void compile_if(void) {
     uint8_t tok, op;
 
     compile_expression(e_NUM);
-    a_Code[Pc++] = k_IF_N3;
+    p_Code[Pc++] = k_IF_N3;
     uint16_t pos = Pc;
     Pc += 2;
     tok = lookahead();
     if(tok == THEN) {
         match(THEN);
         compile_stmts();
-        ACS16(a_Code[pos]) = Pc;
+        ACS16(p_Code[pos]) = Pc;
     } else if(tok == GOTO) {
         match(GOTO);
         compile_goto();
-        ACS16(a_Code[pos]) = Pc;
+        ACS16(p_Code[pos]) = Pc;
     } else {
         error("THEN or GOTO expected instead of '%s'", a_Buff);
     }
     tok = lookahead();
     if(tok == ELSE) {
         match(ELSE);
-        a_Code[Pc++] = k_GOTO_N3; // goto END
-        ACS16(a_Code[pos]) = Pc + 2;
+        p_Code[Pc++] = k_GOTO_N3; // goto END
+        ACS16(p_Code[pos]) = Pc + 2;
         pos = Pc;
         Pc += 2;
         compile_stmts();
-        ACS16(a_Code[pos]) = Pc;
+        ACS16(p_Code[pos]) = Pc;
     }
 }
 
@@ -627,9 +583,9 @@ static void compile_goto(void) {
     label();
     addr = a_Symbol[SymIdx].value;
 #endif
-    a_Code[Pc++] = k_GOTO_N3;
-    a_Code[Pc++] = addr & 0xFF;
-    a_Code[Pc++] = (addr >> 8) & 0xFF;
+    p_Code[Pc++] = k_GOTO_N3;
+    p_Code[Pc++] = addr & 0xFF;
+    p_Code[Pc++] = (addr >> 8) & 0xFF;
 }
 
 static void compile_gosub(void) {
@@ -641,13 +597,13 @@ static void compile_gosub(void) {
     label();
     addr = a_Symbol[SymIdx].value;
 #endif
-    a_Code[Pc++] = k_GOSUB_N3;
-    a_Code[Pc++] = addr & 0xFF;
-    a_Code[Pc++] = (addr >> 8) & 0xFF;
+    p_Code[Pc++] = k_GOSUB_N3;
+    p_Code[Pc++] = addr & 0xFF;
+    p_Code[Pc++] = (addr >> 8) & 0xFF;
 }
 
 static void compile_return(void) {
-    a_Code[Pc++] = k_RETURN_N1;
+    p_Code[Pc++] = k_RETURN_N1;
 }
 
 static void compile_var(void) {
@@ -659,19 +615,19 @@ static void compile_var(void) {
         match(EQ);
         compile_expression(e_STR);
         // Var[value] = pop()
-        a_Code[Pc++] = k_POP_STR_N2;
-        a_Code[Pc++] = a_Symbol[idx].value;
+        p_Code[Pc++] = k_POP_STR_N2;
+        p_Code[Pc++] = a_Symbol[idx].value;
     } else if(tok == ID) { // let a = expression
         match(EQ);
         type = compile_expression(e_ANY);
         if(type == e_NUM) {
             // Var[value] = pop()
-            a_Code[Pc++] = k_POP_VAR_N2;
-            a_Code[Pc++] = a_Symbol[idx].value;
+            p_Code[Pc++] = k_POP_VAR_N2;
+            p_Code[Pc++] = a_Symbol[idx].value;
         } else if(type == e_STR) {
             // Var[value] = pop()
-            a_Code[Pc++] = k_POP_STR_N2;
-            a_Code[Pc++] = a_Symbol[idx].value;
+            p_Code[Pc++] = k_POP_STR_N2;
+            p_Code[Pc++] = a_Symbol[idx].value;
         } else {
             error("type mismatch");
             return;
@@ -682,8 +638,8 @@ static void compile_var(void) {
         match(')');
         match(EQ);
         compile_expression(e_NUM);
-        a_Code[Pc++] = k_SET_ARR_ELEM_N2;
-        a_Code[Pc++] = a_Symbol[idx].value;
+        p_Code[Pc++] = k_SET_ARR_ELEM_N2;
+        p_Code[Pc++] = a_Symbol[idx].value;
     } else {
         error("unknown variable type at '%s'", a_Buff);
     }
@@ -697,8 +653,8 @@ static void compile_dim(void) {
         match('(');
         compile_expression(e_NUM);        
         match(')');
-        a_Code[Pc++] = k_DIM_ARR_N2;
-        a_Code[Pc++] = a_Symbol[idx].value;
+        p_Code[Pc++] = k_DIM_ARR_N2;
+        p_Code[Pc++] = a_Symbol[idx].value;
     } else {
         error("unknown variable type '%u'", tok);
     }
@@ -714,30 +670,30 @@ static void compile_print(void) {
     bool add_newline = true;
     uint8_t tok = lookahead();
     if(tok == 0) {
-        a_Code[Pc++] = k_PRINT_NEWL_N1;
+        p_Code[Pc++] = k_PRINT_NEWL_N1;
         return;
     }
     while(tok && tok != ELSE) {
         add_newline = true;
         if(tok == STR) {
             compile_string();
-            a_Code[Pc++] = k_PRINT_STR_N1;
+            p_Code[Pc++] = k_PRINT_STR_N1;
         } else if(tok == SID) {
-            a_Code[Pc++] = k_PUSH_VAR_N2;
-            a_Code[Pc++] = a_Symbol[SymIdx].value;
-            a_Code[Pc++] = k_PRINT_STR_N1;
+            p_Code[Pc++] = k_PUSH_VAR_N2;
+            p_Code[Pc++] = a_Symbol[SymIdx].value;
+            p_Code[Pc++] = k_PRINT_STR_N1;
             match(SID);
         } else if(tok == SPC) { // spc function
             match('(');
             compile_expression(e_NUM);
             match(')');
-            a_Code[Pc++] = k_PRINT_BLANKS_N1;
+            p_Code[Pc++] = k_PRINT_BLANKS_N1;
         } else {
             type = compile_expression(e_ANY);
             if(type == e_NUM) {
-                a_Code[Pc++] = k_PRINT_VAL_N1;
+                p_Code[Pc++] = k_PRINT_VAL_N1;
             } else if(type == e_STR) {
-                a_Code[Pc++] = k_PRINT_STR_N1;
+                p_Code[Pc++] = k_PRINT_STR_N1;
             } else {
                 error("type mismatch");
                 return;
@@ -746,7 +702,7 @@ static void compile_print(void) {
         tok = lookahead();
         if(tok == ',') {
             match(',');
-            a_Code[Pc++] = k_PRINT_TAB_N1;
+            p_Code[Pc++] = k_PRINT_TAB_N1;
             add_newline = false;
             tok = lookahead();
         } else if(tok == ';') {
@@ -754,18 +710,18 @@ static void compile_print(void) {
             tok = lookahead();
             add_newline = false;
         } else if(tok && tok != ELSE) {
-            a_Code[Pc++] = k_PRINT_SPACE_N1;
+            p_Code[Pc++] = k_PRINT_SPACE_N1;
         }
     }
     if(add_newline) {
-        a_Code[Pc++] = k_PRINT_NEWL_N1;
+        p_Code[Pc++] = k_PRINT_NEWL_N1;
     }
 }
 
 static void debug_print(uint16_t lineno) {
-    a_Code[Pc++] = k_PRINT_LINENO_N3;
-    a_Code[Pc++] = lineno & 0xFF;
-    a_Code[Pc++] = (lineno >> 8) & 0xFF;
+    p_Code[Pc++] = k_PRINT_LINENO_N3;
+    p_Code[Pc++] = lineno & 0xFF;
+    p_Code[Pc++] = (lineno >> 8) & 0xFF;
 }
 
 static void compile_string(void) {
@@ -773,14 +729,14 @@ static void compile_string(void) {
     // push string address
     uint16_t len = strlen(a_Buff);
     a_Buff[len - 1] = '\0';
-    a_Code[Pc++] = k_PUSH_STR_Nx;
-    a_Code[Pc++] = len - 1; // without quotes but with 0
-    strcpy((char*)&a_Code[Pc], a_Buff + 1);
+    p_Code[Pc++] = k_PUSH_STR_Nx;
+    p_Code[Pc++] = len - 1; // without quotes but with 0
+    strcpy((char*)&p_Code[Pc], a_Buff + 1);
     Pc += len - 1;
 }
 
 static void compile_end(void) {
-    a_Code[Pc++] = k_END;
+    p_Code[Pc++] = k_END;
 }
 
 static type_t compile_xfunc(void) {
@@ -793,20 +749,20 @@ static type_t compile_xfunc(void) {
     match('(');
     for(uint8_t i = 0; i < a_XFuncs[idx].num_params; i++) {
         compile_expression(a_XFuncs[idx].type[i]);
-        a_Code[Pc++] = k_PUSH_PARAM_N1;
+        p_Code[Pc++] = k_PUSH_PARAM_N1;
         tok = lookahead();
         if(tok == ',') {
             match(',');
         }
     }
-    a_Code[Pc++] = k_XFUNC_N2;
-    a_Code[Pc++] = idx;
+    p_Code[Pc++] = k_XFUNC_N2;
+    p_Code[Pc++] = idx;
     match(')');
     return a_XFuncs[idx].return_type;
 }
 
 static void compile_break(void) {
-    a_Code[Pc++] = k_BREAK_INSTR_N1;
+    p_Code[Pc++] = k_BREAK_INSTR_N1;
 }
 
 #ifdef cfg_BYTE_ACCESS
@@ -834,7 +790,7 @@ static void compile_copy(void) {
     match(',');
     compile_expression(e_NUM);
     match(')');
-    a_Code[Pc++] = k_COPY_N1;
+    p_Code[Pc++] = k_COPY_N1;
 }
 
 static void compile_set(uint8_t instr) {
@@ -847,8 +803,8 @@ static void compile_set(uint8_t instr) {
     match(',');
     compile_expression(e_NUM);
     match(')');
-    a_Code[Pc++] = instr;
-    a_Code[Pc++] = a_Symbol[idx].value;
+    p_Code[Pc++] = instr;
+    p_Code[Pc++] = a_Symbol[idx].value;
 }
 
 static void compile_get(uint8_t tok, uint8_t instr) {
@@ -860,8 +816,8 @@ static void compile_get(uint8_t tok, uint8_t instr) {
     match(',');
     type = compile_expression(e_NUM);
     match(')');
-    a_Code[Pc++] = instr;
-    a_Code[Pc++] = a_Symbol[idx].value;
+    p_Code[Pc++] = instr;
+    p_Code[Pc++] = a_Symbol[idx].value;
 }
 #endif
 
@@ -877,8 +833,8 @@ static void compile_const(void) {
 static void compile_erase(void) {
     uint8_t tok = next();
     if(tok == ID || tok == ARR) {
-        a_Code[Pc++] = k_ERASE_ARR_N2;
-        a_Code[Pc++] = a_Symbol[SymIdx].value;
+        p_Code[Pc++] = k_ERASE_ARR_N2;
+        p_Code[Pc++] = a_Symbol[SymIdx].value;
     } else {
         error("unknown variable type '%u'", tok);
     }
@@ -893,18 +849,18 @@ static void compile_on(void) {
     uint8_t tok = lookahead();
     if(tok == GOSUB) {
         match(GOSUB);
-        a_Code[Pc++] = k_ON_GOSUB_N2;
+        p_Code[Pc++] = k_ON_GOSUB_N2;
     } else if(tok == GOTO) {
         match(GOTO);
-        a_Code[Pc++] = k_ON_GOTO_N2;
+        p_Code[Pc++] = k_ON_GOTO_N2;
     } else {
         error("GOSUB or GOTO expected instead of '%s'", a_Buff);
         return;
     }
     pos = Pc;
-    a_Code[Pc++] = 0; // number of elements
+    p_Code[Pc++] = 0; // number of elements
     num = list_of_numbers();
-    a_Code[pos] = num;
+    p_Code[pos] = num;
 }
 
 static uint8_t list_of_numbers(void) {
@@ -935,7 +891,7 @@ static void compile_troff(void) {
 static void compile_free(void) {
     match('(');
     match(')');
-    a_Code[Pc++] = k_FREE_N1;
+    p_Code[Pc++] = k_FREE_N1;
 }
 
 /**************************************************************************************************
@@ -1002,29 +958,26 @@ static uint16_t sym_get(char *id) {
 static void error(char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    printf("Error in line %u: ", Linenum);
+    nb_print("Error in line %u: ", Linenum);
     vprintf(fmt, args);
     va_end(args);
-    printf("\n");
+    nb_print("\n");
     ErrCount++;
     p_pos = p_next;
     p_pos[0] = '\0';
 }
 
-#if 0
-static char *token(uint8_t tok) {
-    static char s[5];
-    if(tok >= LET && tok <= STACK) {
-        return Keywords[tok - LET];
-    } else {
-        s[0] = '\'';
-        s[1] = tok;
-        s[2] = '\'';
-        s[3] = '\0';
-        return s;
+static uint8_t get_num_vars(void) {
+    uint8_t idx = 0;
+
+    for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
+        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL)
+        {
+            idx++;
+        }
     }
-} 
-#endif
+    return idx;
+}
 
 /**************************************************************************************************
  * Expression compiler
@@ -1039,7 +992,7 @@ static type_t compile_expression(type_t type) {
             error("type mismatch");
             return type1;
         }
-        a_Code[Pc++] = k_OR_N1;
+        p_Code[Pc++] = k_OR_N1;
         op = lookahead();
     }
     if(type != e_ANY && type1 != type) {
@@ -1058,7 +1011,7 @@ static type_t compile_and_expr(void) {
             error("type mismatch");
             return type2;
         }
-        a_Code[Pc++] = k_AND_N1;
+        p_Code[Pc++] = k_AND_N1;
         op = lookahead();
     }
     return type1;
@@ -1074,7 +1027,7 @@ static type_t compile_not_expr(void) {
             error("type mismatch");
             return type;
         }
-          a_Code[Pc++] = k_NOT_N1;
+          p_Code[Pc++] = k_NOT_N1;
     } else {
         type = compile_comp_expr();
     }
@@ -1094,12 +1047,12 @@ static type_t compile_comp_expr(void) {
 #ifdef cfg_STRING_SUPPORT        
         if(type1 == e_STR) {
             switch(op) {
-            case EQ: a_Code[Pc++] = k_STR_EQUAL_N1; break;
-            case NQ: a_Code[Pc++] = k_STR_NOT_EQU_N1; break;
-            case LE: a_Code[Pc++] = k_STR_LESS_N1; break;
-            case LQ: a_Code[Pc++] = k_STR_LESS_EQU_N1; break;
-            case GR: a_Code[Pc++] = k_STR_GREATER_N1; break;
-            case GQ: a_Code[Pc++] = k_STR_GREATER_EQU_N1; break;
+            case EQ: p_Code[Pc++] = k_STR_EQUAL_N1; break;
+            case NQ: p_Code[Pc++] = k_STR_NOT_EQU_N1; break;
+            case LE: p_Code[Pc++] = k_STR_LESS_N1; break;
+            case LQ: p_Code[Pc++] = k_STR_LESS_EQU_N1; break;
+            case GR: p_Code[Pc++] = k_STR_GREATER_N1; break;
+            case GQ: p_Code[Pc++] = k_STR_GREATER_EQU_N1; break;
             default: error("unknown operator '%u'", op); break;
             }
         } else {
@@ -1107,12 +1060,12 @@ static type_t compile_comp_expr(void) {
         { 
 #endif
             switch(op) {
-            case EQ: a_Code[Pc++] = k_EQUAL_N1; break;
-            case NQ: a_Code[Pc++] = k_NOT_EQUAL_N1; break;
-            case LE: a_Code[Pc++] = k_LESS_N1; break;
-            case LQ: a_Code[Pc++] = k_LESS_EQU_N1; break;
-            case GR: a_Code[Pc++] = k_GREATER_N1; break;
-            case GQ: a_Code[Pc++] = k_GREATER_EQU_N1; break;
+            case EQ: p_Code[Pc++] = k_EQUAL_N1; break;
+            case NQ: p_Code[Pc++] = k_NOT_EQUAL_N1; break;
+            case LE: p_Code[Pc++] = k_LESS_N1; break;
+            case LQ: p_Code[Pc++] = k_LESS_EQU_N1; break;
+            case GR: p_Code[Pc++] = k_GREATER_N1; break;
+            case GQ: p_Code[Pc++] = k_GREATER_EQU_N1; break;
             default: error("unknown operator '%u'", op); break;
             }
         }
@@ -1133,10 +1086,10 @@ static type_t compile_add_expr(void) {
         }
         if(op == '+') {
             if(type1 == e_NUM) {
-              a_Code[Pc++] = k_ADD_N1;
+              p_Code[Pc++] = k_ADD_N1;
             } else {
 #ifdef cfg_STRING_SUPPORT                
-                a_Code[Pc++] = k_ADD_STR_N1;
+                p_Code[Pc++] = k_ADD_STR_N1;
 #else
                 error("type mismatch");
                 return type1;
@@ -1144,7 +1097,7 @@ static type_t compile_add_expr(void) {
             }
         } else {
             if(type1 == e_NUM) {
-              a_Code[Pc++] = k_SUB_N1;
+              p_Code[Pc++] = k_SUB_N1;
             } else {
               error("type mismatch");
               return type1;
@@ -1166,11 +1119,11 @@ static type_t compile_term(void) {
             return type2;
         }
         if(op == '*') {
-          a_Code[Pc++] = k_MUL_N1;
+          p_Code[Pc++] = k_MUL_N1;
         } else if(op == MOD) {
-          a_Code[Pc++] = k_MOD_N1;
+          p_Code[Pc++] = k_MOD_N1;
         } else {
-          a_Code[Pc++] = k_DIV_N1;
+          p_Code[Pc++] = k_DIV_N1;
         }
         op = lookahead();
     }
@@ -1192,16 +1145,16 @@ static type_t compile_factor(void) {
         match(e_CNST);
         if(Value < 256)
         {
-          a_Code[Pc++] = k_PUSH_NUM_N2;
-          a_Code[Pc++] = Value;
+          p_Code[Pc++] = k_PUSH_NUM_N2;
+          p_Code[Pc++] = Value;
         }
         else
         {
-          a_Code[Pc++] = k_PUSH_NUM_N5;
-          a_Code[Pc++] = Value & 0xFF;
-          a_Code[Pc++] = (Value >> 8) & 0xFF;
-          a_Code[Pc++] = (Value >> 16) & 0xFF;
-          a_Code[Pc++] = (Value >> 24) & 0xFF;
+          p_Code[Pc++] = k_PUSH_NUM_N5;
+          p_Code[Pc++] = Value & 0xFF;
+          p_Code[Pc++] = (Value >> 8) & 0xFF;
+          p_Code[Pc++] = (Value >> 16) & 0xFF;
+          p_Code[Pc++] = (Value >> 24) & 0xFF;
         }
         type = e_NUM;
         break;
@@ -1209,23 +1162,23 @@ static type_t compile_factor(void) {
         match(NUM);
         if(Value < 256)
         {
-          a_Code[Pc++] = k_PUSH_NUM_N2;
-          a_Code[Pc++] = Value;
+          p_Code[Pc++] = k_PUSH_NUM_N2;
+          p_Code[Pc++] = Value;
         }
         else
         {
-          a_Code[Pc++] = k_PUSH_NUM_N5;
-          a_Code[Pc++] = Value & 0xFF;
-          a_Code[Pc++] = (Value >> 8) & 0xFF;
-          a_Code[Pc++] = (Value >> 16) & 0xFF;
-          a_Code[Pc++] = (Value >> 24) & 0xFF;
+          p_Code[Pc++] = k_PUSH_NUM_N5;
+          p_Code[Pc++] = Value & 0xFF;
+          p_Code[Pc++] = (Value >> 8) & 0xFF;
+          p_Code[Pc++] = (Value >> 16) & 0xFF;
+          p_Code[Pc++] = (Value >> 24) & 0xFF;
         }
         type = e_NUM;
         break;
     case ID: // variable, like var1
         match(ID);
-        a_Code[Pc++] = k_PUSH_VAR_N2;
-        a_Code[Pc++] = a_Symbol[SymIdx].value;
+        p_Code[Pc++] = k_PUSH_VAR_N2;
+        p_Code[Pc++] = a_Symbol[SymIdx].value;
         type = e_NUM;
         break;
     case ARR: 
@@ -1236,12 +1189,12 @@ static type_t compile_factor(void) {
             match('(');
             compile_expression(e_NUM);
             match(')');
-            a_Code[Pc++] = k_GET_ARR_ELEM_N2;
-            a_Code[Pc++] = val;
+            p_Code[Pc++] = k_GET_ARR_ELEM_N2;
+            p_Code[Pc++] = val;
             type = e_NUM;
         } else { // left$(A,8) or copy(A+0,...)
-            a_Code[Pc++] = k_PUSH_VAR_N2;
-            a_Code[Pc++] = a_Symbol[SymIdx].value;
+            p_Code[Pc++] = k_PUSH_VAR_N2;
+            p_Code[Pc++] = a_Symbol[SymIdx].value;
             type = e_ARR;
         }
         break;
@@ -1264,16 +1217,16 @@ static type_t compile_factor(void) {
         // push string address
         uint16_t len = strlen(a_Buff);
         a_Buff[len - 1] = '\0';
-        a_Code[Pc++] = k_PUSH_STR_Nx;
-        a_Code[Pc++] = len - 1; // without quotes but with 0
-        strcpy((char*)&a_Code[Pc], a_Buff + 1);
+        p_Code[Pc++] = k_PUSH_STR_Nx;
+        p_Code[Pc++] = len - 1; // without quotes but with 0
+        strcpy((char*)&p_Code[Pc], a_Buff + 1);
         Pc += len - 1;
         type = e_STR;
         break;
     case SID: // string variable, like A$
         match(SID);
-        a_Code[Pc++] = k_PUSH_VAR_N2;
-        a_Code[Pc++] = a_Symbol[SymIdx].value;
+        p_Code[Pc++] = k_PUSH_VAR_N2;
+        p_Code[Pc++] = a_Symbol[SymIdx].value;
         type = e_STR;
         break;
 #ifdef cfg_STRING_SUPPORT        
@@ -1284,7 +1237,7 @@ static type_t compile_factor(void) {
         match(',');
         compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_LEFT_STR_N1;
+        p_Code[Pc++] = k_LEFT_STR_N1;
         type = e_STR;
         break;
     case RIGHTS: // right function
@@ -1294,7 +1247,7 @@ static type_t compile_factor(void) {
         match(',');
         compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_RIGHT_STR_N1;
+        p_Code[Pc++] = k_RIGHT_STR_N1;
         type = e_STR;
         break;
     case MIDS: // mid function
@@ -1306,7 +1259,7 @@ static type_t compile_factor(void) {
         match(',');
         type = compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_MID_STR_N1;
+        p_Code[Pc++] = k_MID_STR_N1;
         type = e_STR;
         break;
     case LEN: // len function
@@ -1314,7 +1267,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_STR);
         match(')');
-        a_Code[Pc++] = k_STR_LEN_N1;
+        p_Code[Pc++] = k_STR_LEN_N1;
         type = e_NUM;
         break;
     case VAL: // val function
@@ -1322,7 +1275,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_STR);
         match(')');
-        a_Code[Pc++] = k_STR_TO_VAL_N1;
+        p_Code[Pc++] = k_STR_TO_VAL_N1;
         type = e_NUM;
         break;
     case STRS: // str$ function
@@ -1330,7 +1283,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_VAL_TO_STR_N1;
+        p_Code[Pc++] = k_VAL_TO_STR_N1;
         type = e_STR;
         break;
     case HEXS: // hex function
@@ -1338,7 +1291,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_VAL_TO_HEX_N1;
+        p_Code[Pc++] = k_VAL_TO_HEX_N1;
         type = e_STR;
         break;
     case CHRS: // chr$ function
@@ -1346,7 +1299,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_VAL_TO_CHR_N1;
+        p_Code[Pc++] = k_VAL_TO_CHR_N1;
         type = e_STR;
         break;
     case INSTR: // instr function
@@ -1358,7 +1311,7 @@ static type_t compile_factor(void) {
         match(',');
         compile_expression(e_STR);
         match(')');
-        a_Code[Pc++] = k_INSTR_N1;
+        p_Code[Pc++] = k_INSTR_N1;
         type = e_NUM;
         break;
 #endif        
@@ -1366,7 +1319,7 @@ static type_t compile_factor(void) {
         match(STACK);
         match('(');
         match(')');
-        a_Code[Pc++] = k_STACK_N1;
+        p_Code[Pc++] = k_STACK_N1;
         type = e_NUM;
         break;
     case RND: // Random number
@@ -1374,7 +1327,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_RND_N1;
+        p_Code[Pc++] = k_RND_N1;
         type = e_NUM;
         break;
     case ELSE:
@@ -1382,7 +1335,7 @@ static type_t compile_factor(void) {
     case XFUNC:
         match(XFUNC);
         type = compile_xfunc();
-        a_Code[Pc++] = k_STACK_N1;
+        p_Code[Pc++] = k_STACK_N1;
         break;
     default:
         error("unknown factor '%u'", tok);

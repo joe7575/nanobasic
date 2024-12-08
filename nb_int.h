@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define k_TAG           0xBC
 #define k_VERSION       0x01
 
-#define k_MEM_BLOCK_SIZE    (16)    // Must be a multiple of 4 (real size is MIN_BLOCK_SIZE - 1)
+#define k_MEM_BLOCK_SIZE    (8)     // Must be a multiple of 4 (real size is MIN_BLOCK_SIZE - 1)
 #define k_MEM_FREE_TAG      (0)     // Also used for number of blocks
 
 #define ACS8(x)   *(uint8_t*)&(x)
@@ -110,7 +110,10 @@ enum {
 };
 
 typedef struct {
-    uint8_t  *p_programm;
+    uint8_t  *p_programm;   // pointer to the compiled byte code
+    uint16_t max_code_size; // maximum size of the compiled byte code
+    uint16_t code_size;     // size of the compiled byte code
+    uint16_t num_vars;      // number of used variables
     uint16_t pc;   // Programm counter
     uint8_t  dsp;  // Data stack pointer
     uint8_t  csp;  // Call stack pointer
@@ -124,7 +127,6 @@ typedef struct {
 } t_VM;
 
 char *nb_scanner(char *p_in, char *p_out);
-
 void nb_mem_init(t_VM *p_vm);
 uint16_t nb_mem_alloc(t_VM *p_vm, uint16_t bytes);
 void nb_mem_free(t_VM *p_vm, uint16_t addr);

@@ -1,4 +1,5 @@
 rem Mein kleines Testprogramm
+tron
 const kV = 100
 let x = 1 + kV
 loop: print "X = "; x,
@@ -6,9 +7,9 @@ let x = x + 1:let y=x*10
 if x < 10 then goto loop
 let Bvar = x * 10 + 11
 print "B = "; Bvar
-gosub foo
-gosub foo2
-gosub foo3
+gosub myfunc
+gosub myfunc2
+gosub myfunc3
 print
 let A$ = "0123456789"
 print left$(A$, 3), "= 012"
@@ -28,8 +29,8 @@ print "END", x
 end
 
 
-foo:
-print "foo", y, y<12, not y>12
+myfunc:
+print "myfunc", y, y<12, not y>12
 let A$ = "Welt"
 print "Hallo", A$
 let B$ = A$ + " lasse dich grüßen!"
@@ -49,7 +50,7 @@ print get4(buf2, 12), "= 987654321"
 return
 
 
-foo2:
+myfunc2:
 for i = 0 to 10
   print i,
 next i
@@ -61,7 +62,7 @@ let p1 = stack()
 rem print "on_can", p1
 return
 
-foo3:
+myfunc3:
 print "RND ",
 for i = 0 to 20
   print rnd(100),
