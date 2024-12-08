@@ -1,6 +1,6 @@
-# Tiny Basic
+# NanoBasic
 
-Die Syntax von TinyBasic ist durchaus überschaubar, deckt aber alles ab, was dringend benötigt
+Die Syntax von NanoBasic ist durchaus überschaubar, deckt aber alles ab, was dringend benötigt
 wird (bereits bereinigt, was nicht benötigt wird).
 
 ```bnf

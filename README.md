@@ -1,5 +1,5 @@
-Joes Basic
-==========
+NanoBasic
+=========
 
-A small BASIC parser, interpreter and compiler in C.
+A small BASIC compiler with virtual machine implemented in C.
 

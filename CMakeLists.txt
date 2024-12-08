@@ -3,14 +3,14 @@ project(tinybasic VERSION 0.1.0 LANGUAGES C)
 
 #include_directories(./core)
 
-add_executable(joesbasic
-    ./jbi_scanner.c
-    ./jbi_compiler.c
-    ./jbi_runtime.c
-    ./jbi_memory.c
+add_executable(nanobasic
+    ./nb_scanner.c
+    ./nb_compiler.c
+    ./nb_runtime.c
+    ./nb_memory.c
     ./main.c
-    ./jbi.h
-    ./jbi_int.h
+    ./nb.h
+    ./nb_int.h
 )
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})

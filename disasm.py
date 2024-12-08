@@ -4,7 +4,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 is_active = False
 index = 0
 Opcodes = []
-for line in open("jbi_int.h").readlines():
+for line in open("nb_int.h").readlines():
     if "Opcode definitions" in line:
         is_active = True
         continue

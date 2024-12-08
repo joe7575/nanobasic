@@ -123,11 +123,11 @@ typedef struct {
     uint8_t  heap[cfg_MEM_HEAP_SIZE];
 } t_VM;
 
-char *jbi_scanner(char *p_in, char *p_out);
+char *nb_scanner(char *p_in, char *p_out);
 
-void jbi_mem_init(t_VM *p_vm);
-uint16_t jbi_mem_alloc(t_VM *p_vm, uint16_t bytes);
-void jbi_mem_free(t_VM *p_vm, uint16_t addr);
-uint16_t jbi_mem_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes);
-uint16_t jbi_mem_get_blocksize(t_VM *p_vm, uint16_t addr);
-uint16_t jbi_mem_get_free(t_VM *p_vm);
+void nb_mem_init(t_VM *p_vm);
+uint16_t nb_mem_alloc(t_VM *p_vm, uint16_t bytes);
+void nb_mem_free(t_VM *p_vm, uint16_t addr);
+uint16_t nb_mem_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes);
+uint16_t nb_mem_get_blocksize(t_VM *p_vm, uint16_t addr);
+uint16_t nb_mem_get_free(t_VM *p_vm);

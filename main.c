@@ -26,7 +26,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <assert.h>
 #include <time.h>
 #include <errno.h>    
-#include "jbi.h"
+#include "nb.h"
 
 extern void test_memory(void *p_vm);
 
@@ -49,7 +49,7 @@ int msleep(uint32_t msec)
 int main(int argc, char* argv[]) {
     uint16_t size;
     uint8_t num_vars;
-    uint16_t res = JBI_BUSY;
+    uint16_t res = NB_BUSY;
     uint32_t cycles = 0;
     uint16_t buf1;
     uint8_t *pArr = NULL;
@@ -62,56 +62,56 @@ int main(int argc, char* argv[]) {
     }
     printf("Joes Basic Compiler V1.0\n");
 
-    jbi_init();
-    //assert(jbi_define_external_function("foo", 2, (uint8_t[]){1, 2}, 0) == 0);
-    //assert(jbi_define_external_function("foo2", 0, (uint8_t[]){}, 1) == 1);
-    //assert(jbi_define_external_function("foo3", 0, (uint8_t[]){}, 2) == 2);
-    //uint8_t *code = jbi_compiler("../examples/temp.bas", &size);
-    //uint8_t *code = jbi_compiler("../examples/lineno.bas", &size);
-    uint8_t *code = jbi_compiler("../examples/test.bas", &size);
-    //uint8_t *code = jbi_compiler("../examples/basis.bas", &size);
+    nb_init();
+    //assert(nb_define_external_function("foo", 2, (uint8_t[]){1, 2}, 0) == 0);
+    //assert(nb_define_external_function("foo2", 0, (uint8_t[]){}, 1) == 1);
+    //assert(nb_define_external_function("foo3", 0, (uint8_t[]){}, 2) == 2);
+    //uint8_t *code = nb_compiler("../examples/temp.bas", &size);
+    //uint8_t *code = nb_compiler("../examples/lineno.bas", &size);
+    uint8_t *code = nb_compiler("../examples/test.bas", &size);
+    //uint8_t *code = nb_compiler("../examples/basis.bas", &size);
 
     if(code == NULL) {
         return 1;
     }
-    jbi_output_symbol_table();
-    on_can = jbi_get_label_address("200");
+    nb_output_symbol_table();
+    on_can = nb_get_label_address("200");
     if(on_can == 0) {
-        on_can = jbi_get_label_address("on_can");
+        on_can = nb_get_label_address("on_can");
     }
-    buf1 = jbi_get_var_num("buf1");
+    buf1 = nb_get_var_num("buf1");
 
     printf("\nJoes Basic Interpreter V1.0\n");
-    void *instance = jbi_create(code);
+    void *instance = nb_create(code);
     //test_memory(instance);
     //return 0;
-    jbi_dump_code(code, size);
-    num_vars = jbi_get_num_vars();
+    nb_dump_code(code, size);
+    num_vars = nb_get_num_vars();
 
-    while(res >= JBI_BUSY) {
+    while(res >= NB_BUSY) {
         // A simple for loop "for i = 1 to 100: print i: next i" 
         // needs ~500 ticks or 1 second (50 cycles per 100 ms)
-        res = jbi_run(instance, code, size, 50, num_vars);
+        res = nb_run(instance, code, size, 50, num_vars);
         cycles += 50;
         msleep(100);
-        if(res == JBI_XFUNC) {
-            if(jbi_ReturnValue == 0) {
-                printf("External function foo(%d, \"%s\")\n", jbi_pop_num(instance), jbi_pop_str(instance, s, 80));
-            } else if(jbi_ReturnValue == 1) {
+        if(res == NB_XFUNC) {
+            if(nb_ReturnValue == 0) {
+                printf("External function foo(%d, \"%s\")\n", nb_pop_num(instance), nb_pop_str(instance, s, 80));
+            } else if(nb_ReturnValue == 1) {
                 printf("External function foo2()\n");
-                jbi_push_num(instance, 87654);
-            } else if(jbi_ReturnValue == 2) {
+                nb_push_num(instance, 87654);
+            } else if(nb_ReturnValue == 2) {
                 printf("External function foo3()\n");
-                jbi_push_str(instance, "Solali");
+                nb_push_str(instance, "Solali");
             } else {
                 printf("Unknown external function\n");
             }
         } else if(on_can > 0){
-            jbi_push_num(instance, 87654);
-            jbi_set_pc(instance, on_can);
+            nb_push_num(instance, 87654);
+            nb_set_pc(instance, on_can);
         }
     }
-    jbi_destroy(instance);
+    nb_destroy(instance);
 
     printf("Cycles: %u\n", cycles);
     printf("Ready.\n");
@@ -122,14 +122,14 @@ int main(int argc, char* argv[]) {
             //     var = p_programm[vm->pc + 1];
             //     addr = vm->variables[var];
             //     if(addr > 0) {
-            //         jbi_mem_free(vm, addr);
+            //         nb_mem_free(vm, addr);
             //     }
             //     addr = DPOP();
-            //     size = jbi_mem_get_blocksize(vm, addr);
-            //     addr2 = jbi_mem_alloc(vm, size);
+            //     size = nb_mem_get_blocksize(vm, addr);
+            //     addr2 = nb_mem_alloc(vm, size);
             //     if(addr2 == 0) {
             //         PRINTF("Error: Out of memory\n");
-            //         return JBI_ERROR;
+            //         return NB_ERROR;
             //     }
             //     memcpy(&vm->heap[addr2 & 0x7FFF], &vm->heap[addr & 0x7FFF], size);
             //     vm->variables[var] = addr2;

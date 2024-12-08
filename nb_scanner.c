@@ -24,8 +24,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <stdlib.h>
 #include <ctype.h>
 #include <assert.h>
-#include "jbi.h"
-#include "jbi_int.h"
+#include "nb.h"
+#include "nb_int.h"
 
 #define is_alpha(x)   (Ascii[x & 0x7F] & 0x01)
 #define is_digit(x)   (Ascii[x & 0x7F] & 0x02)
@@ -46,7 +46,7 @@ static char Ascii[] = {
     0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x70 - 0x7F
 };
 
-char *jbi_scanner(char *p_in, char *p_out) {
+char *nb_scanner(char *p_in, char *p_out) {
     char c8;
 
     while(is_wspace(*p_in)) {
@@ -144,21 +144,21 @@ int main(void) {
     char *p = s;
 
     while(*p != 0) {
-        p = jbi_scanner(p,t);
+        p = nb_scanner(p,t);
         printf("%s\n",t);
     }
 
     strcpy(s,"\"Hello World\"");
     p = s;
     while(*p != 0) {
-        p = jbi_scanner(p,t);
+        p = nb_scanner(p,t);
         printf("%s\n",t);
     }
     
     strcpy(s,"A=1234*2-1");
     p = s;
     while(*p != 0) {
-        p = jbi_scanner(p,t);
+        p = nb_scanner(p,t);
         printf("%s\n",t);
     }
 
