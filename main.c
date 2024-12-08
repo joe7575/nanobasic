@@ -54,6 +54,7 @@ int main(int argc, char* argv[]) {
     uint16_t buf1;
     uint8_t *pArr = NULL;
     uint16_t on_can;
+    char s[80];
     
     if (argc != 2) {
         printf("Usage: %s <programm>\n", argv[0]);
@@ -62,10 +63,13 @@ int main(int argc, char* argv[]) {
     printf("Joes Basic Compiler V1.0\n");
 
     jbi_init();
-    //uint8_t *code = jbi_compiler("../temp.bas", &size);
-    //uint8_t *code = jbi_compiler("../lineno.bas", &size);
-    uint8_t *code = jbi_compiler("../test.bas", &size);
-    //uint8_t *code = jbi_compiler("../basis.bas", &size);
+    //assert(jbi_define_external_function("foo", 2, (uint8_t[]){1, 2}, 0) == 0);
+    //assert(jbi_define_external_function("foo2", 0, (uint8_t[]){}, 1) == 1);
+    //assert(jbi_define_external_function("foo3", 0, (uint8_t[]){}, 2) == 2);
+    //uint8_t *code = jbi_compiler("../examples/temp.bas", &size);
+    //uint8_t *code = jbi_compiler("../examples/lineno.bas", &size);
+    uint8_t *code = jbi_compiler("../examples/test.bas", &size);
+    //uint8_t *code = jbi_compiler("../examples/basis.bas", &size);
 
     if(code == NULL) {
         return 1;
@@ -90,14 +94,20 @@ int main(int argc, char* argv[]) {
         res = jbi_run(instance, code, size, 50, num_vars);
         cycles += 50;
         msleep(100);
-        if(res == JBI_CMD) {
-            pArr = jbi_get_arr_address(instance, buf1);
-            if(pArr != NULL) {
-                uint32_t num = jbi_pop_var(instance);
-                printf("Send command to %u: %02X %02X %02X %02X\n", num, pArr[0], pArr[1], pArr[2], pArr[3]);
+        if(res == JBI_XFUNC) {
+            if(jbi_ReturnValue == 0) {
+                printf("External function foo(%d, \"%s\")\n", jbi_pop_num(instance), jbi_pop_str(instance, s, 80));
+            } else if(jbi_ReturnValue == 1) {
+                printf("External function foo2()\n");
+                jbi_push_num(instance, 87654);
+            } else if(jbi_ReturnValue == 2) {
+                printf("External function foo3()\n");
+                jbi_push_str(instance, "Solali");
+            } else {
+                printf("Unknown external function\n");
             }
         } else if(on_can > 0){
-            jbi_push_var(instance, 87654);
+            jbi_push_num(instance, 87654);
             jbi_set_pc(instance, on_can);
         }
     }

@@ -50,7 +50,7 @@ enum {
     k_DIM_ARR_N2,         // 0E (pop variable, pop size)
     k_BREAK_INSTR_N1,     // 0F (break)
     k_ADD_N1,             // 10 (add two values from stack)
-    k_SUB_N1,             // 11 (sub ftwo values rom stack)
+    k_SUB_N1,             // 11 (sub two values from stack)
     k_MUL_N1,             // 12 (mul two values from stack)
     k_DIV_N1,             // 13 (div two values from stack)
     k_MOD_N1,             // 14 (mod two values from stack)
@@ -68,8 +68,10 @@ enum {
     k_RETURN_N1,          // 20 (pop return address)
     k_NEXT_N4,            // 21 (16 bit programm address), (variable)
     k_IF_N3,              // 22 (pop val, END address)
+#ifdef cfg_ON_COMMANDS
     k_ON_GOTO_N2,         // 23 (on...goto with last number)
     k_ON_GOSUB_N2,        // 24 (on...gosub with last number)
+#endif
     k_SET_ARR_ELEM_N2,    // 25 (set array element)
     k_GET_ARR_ELEM_N2,    // 26 (get array element)
 #ifdef cfg_BYTE_ACCESS    
@@ -81,107 +83,34 @@ enum {
     k_GET_ARR_4BYTE_N2,   // 2C (array: get one long)
     k_COPY_N1,            // 2D (copy)
 #endif
-    k_POP_PUSH_N1,        // 2E (pop and push)
-    k_FUNC_CALL,          // 2F (function call)
-    k_ERASE_ARR_N2,       // 30 (erase array)
-    k_FREE_N1,            // 31 (free memory)
-    k_RND_N1,             // 32 (random number)
+    k_STACK_N1,           // 2E (pop and push value)
+    k_XFUNC_N2,           // 2F (external function call)
+    k_PUSH_PARAM_N1,      // 30 (push value to parameter stack)
+    k_ERASE_ARR_N2,       // 31 (erase array)
+    k_FREE_N1,            // 32 (free memory)
+    k_RND_N1,             // 33 (random number)
 #ifdef cfg_STRING_SUPPORT
-    k_ADD_STR_N1,         // 33 (add two strings from stack)
-    k_STR_EQUAL_N1,       // 34 (compare two values from stack)
-    k_STR_NOT_EQU_N1,     // 35 (compare two values from stack)
-    k_STR_LESS_N1,        // 36 (compare two values from stack)     
-    k_STR_LESS_EQU_N1,    // 37 (compare two values from stack) 
-    k_STR_GREATER_N1,     // 38 (compare two values from stack)      
-    k_STR_GREATER_EQU_N1, // 39 (compare two values from stack)
+    k_ADD_STR_N1,         // 34 (add two strings from stack)
+    k_STR_EQUAL_N1,       // 35 (compare two values from stack)
+    k_STR_NOT_EQU_N1,     // 36 (compare two values from stack)
+    k_STR_LESS_N1,        // 37 (compare two values from stack)     
+    k_STR_LESS_EQU_N1,    // 38 (compare two values from stack) 
+    k_STR_GREATER_N1,     // 39 (compare two values from stack)      
+    k_STR_GREATER_EQU_N1, // 3A (compare two values from stack)
+    k_LEFT_STR_N1,        // 3B (left$)
+    k_RIGHT_STR_N1,       // 3C (right$)
+    k_MID_STR_N1,         // 3D (mid$)
+    k_STR_LEN_N1,         // 3E (len)
+    k_STR_TO_VAL_N1,      // 3F (val)
+    k_VAL_TO_STR_N1,      // 40 (str$)
+    k_VAL_TO_HEX_N1,      // 41 (hex$)
+    k_VAL_TO_CHR_N1,      // 42 (chr$)
+    k_INSTR_N1,           // 43 (instr)
 #endif
 };
-
-// Function call definitions
-enum {
-    k_CALL_CMD_N2,        // 00 (call command)
-#ifdef cfg_STRING_SUPPORT
-    k_LEFT_STR_N2,        // 02 (left$)
-    k_RIGHT_STR_N2,       // 03 (right$)
-    k_MID_STR_N2,         // 04 (mid$)
-    k_STR_LEN_N2,         // 05 (len)
-    k_STR_TO_VAL_N2,      // 06 (val)
-    k_VAL_TO_STR_N2,      // 07 (str$)
-    k_VAL_TO_HEX_N2,      // 08 (hex$)
-    k_VAL_TO_CHR_N2,      // 09 (chr$)
-    k_INSTR_N2,           // 0A (instr)
-#endif
-};
-
-#ifdef DEBUG
-char *Opcodes[] = {
-    "k_END",
-    "k_PRINT_STR_N1",
-    "k_PRINT_VAL_N1",
-    "k_PRINT_NEWL_N1",
-    "k_PRINT_TAB_N1",
-    "k_PRINT_BLANKS_N1",
-    "k_PRINT_LINENO_N3",
-    "k_PUSH_STR_Nx",
-    "k_PUSH_NUM_N5",
-    "k_PUSH_NUM_N2",
-    "k_PUSH_VAR_N2",
-    "k_POP_VAR_N2",
-    "k_POP_STR_N2",
-    "k_DIM_ARR_N2",
-    "k_BREAK_INSTR_N1",
-    "k_ADD_N1",
-    "k_SUB_N1",
-    "k_MUL_N1",
-    "k_DIV_N1",
-    "k_MOD_N1",
-    "k_AND_N1",
-    "k_OR_N1",
-    "k_NOT_N1",
-    "k_EQUAL_N1",
-    "k_NOT_EQUAL_N1",
-    "k_LESS_N1",
-    "k_LESS_EQU_N1",
-    "k_GREATER_N1",
-    "k_GREATER_EQU_N1",
-    "k_GOTO_N3",
-    "k_GOSUB_N3",
-    "k_RETURN_N1",
-    "k_NEXT_N4",
-    "k_IF_N3",
-    "k_ON_GOTO_N2",
-    "k_SET_ARR_ELEM_N2",
-    "k_GET_ARR_ELEM_N2",
-#ifdef cfg_BYTE_ACCESS    
-    "k_SET_ARR_1BYTE_N2",
-    "k_GET_ARR_1BYTE_N2",
-    "k_SET_ARR_2BYTE_N2",
-    "k_GET_ARR_2BYTE_N2",
-    "k_SET_ARR_4BYTE_N2",
-    "k_GET_ARR_4BYTE_N2",
-    "k_COPY_N1",
-#endif
-    "k_POP_PUSH_N1",
-    "k_FUNC_CALL",
-    "k_ERASE_ARR_N2",
-    "k_FREE_N1",
-    "k_RND_N1",
-#ifdef cfg_STRING_SUPPORT
-    "k_ADD_STR_N1",
-    "k_STR_EQUAL_N1",
-    "k_STR_NOT_EQU_N1",
-    "k_STR_LESS_N1",
-    "k_STR_LESS_EQU_N1",
-    "k_STR_GREATER_N1",
-    "k_STR_GREATER_EQU_N1",
-#endif
-};
-
-assert(sizeof(Opcodes) / sizeof(Opcodes[0]) == k_STR_GREATER_EQU_N1 + 1);
-#endif
-
 
 typedef struct {
+    uint8_t  *p_programm;
     uint16_t pc;   // Programm counter
     uint8_t  dsp;  // Data stack pointer
     uint8_t  csp;  // Call stack pointer

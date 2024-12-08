@@ -45,7 +45,6 @@ set4(buf1, 12, 987654321)
 DIM buf2(4)
 copy(buf2, 12, buf1, 12, 4)
 print get4(buf2, 12), "= 987654321"
-cmd(12345)
 
 return
 

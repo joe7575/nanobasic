@@ -27,11 +27,14 @@ enum {
   JBI_END = 0,  // programm end reached
   JBI_ERROR,    // error in programm
   JBI_BUSY,     // programm still willing to run
-  JBI_CMD,      // send command (buffer)
+  JBI_XFUNC,    // 'call' external function
   JBI_BREAK,    // break command
 };
 
+extern uint8_t jbi_ReturnValue;
+
 void jbi_init(void);
+uint8_t jbi_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type);
 uint8_t *jbi_compiler(char *filename, uint16_t *p_len);
 void *jbi_create(uint8_t* p_programm);
 uint16_t jbi_run(void *pv_vm, uint8_t* p_programm, uint16_t len, uint16_t cycles, uint8_t num_vars);
@@ -43,10 +46,13 @@ void jbi_output_symbol_table(void);
 uint8_t jbi_get_num_vars(void);
 uint16_t jbi_get_var_num(char *name);
 uint16_t jbi_get_label_address(char *name);
-uint32_t *jbi_get_var_address(void *pv_vm, uint8_t var);
-uint8_t *jbi_get_arr_address(void *pv_vm, uint8_t idx);
-uint32_t jbi_pop_var(void *pv_vm);
-void jbi_push_var(void *pv_vm, uint32_t value);
-uint8_t jbi_stack_depth(void *pv_vm);
 
 void jbi_set_pc(void * pv_vm, uint16_t addr);
+
+uint8_t jbi_stack_depth(void *pv_vm);
+uint32_t jbi_pop_num(void *pv_vm);
+void jbi_push_num(void *pv_vm, uint32_t value);
+char *jbi_pop_str(void *pv_vm, char *str, uint8_t len);
+void jbi_push_str(void *pv_vm, char *str);
+uint32_t *jbi_pop_arr(void *pv_vm, uint32_t *arr, uint8_t len);
+void jbi_push_arr(void *pv_vm, uint32_t *arr, uint8_t len);

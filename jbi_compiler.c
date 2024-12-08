@@ -44,7 +44,7 @@ enum {
     NOT, MOD, NUM, STR,         // 144 - 147
     ID, SID, EQ, NQ,            // 148 - 151
     LE, LQ, GR, GQ,             // 152 - 155
-    CMD, ARR, BREAK, LABEL,     // 156 - 159
+    XFUNC, ARR, BREAK, LABEL,   // 156 - 159
     SET1, SET2, SET4, GET1,     // 160 - 163    
     GET2, GET4, LEFTS, RIGHTS,  // 164 - 167
     MIDS, LEN, VAL, STRS,       // 168 - 171
@@ -62,6 +62,7 @@ typedef enum type_t {
     e_CNST,
 } type_t;
 
+#if 0
 // Keywords
 static char *Keywords[] = {
     "let", "dim", "for", "to",
@@ -71,7 +72,7 @@ static char *Keywords[] = {
     "not", "mod", "number", "string",
     "variable", "string variable", "=", "<>",
     "<", "<=", ">", ">=",
-    "cmd", "array", "break", "label",
+    "xfunc", "array", "break", "label",
     "set1", "set2", "set4", "get1",
     "get2", "get4", "left$", "right$",
     "mid$", "len", "val", "str$",
@@ -80,6 +81,7 @@ static char *Keywords[] = {
     "instr", "on", "tron", "troff",
     "free", "rnd",
 };
+#endif
 
 // Symbol table
 typedef struct {
@@ -89,6 +91,14 @@ typedef struct {
     uint16_t value;  // Variable index (0..n) or label address
 } sym_t;
 
+typedef struct {
+    uint8_t num_params;
+    uint8_t return_type;
+    uint8_t type[4];
+} xfunc_t;
+
+static xfunc_t a_XFuncs[16] = {0};
+static uint8_t NumXFuncs = 0;
 static sym_t a_Symbol[cfg_MAX_NUM_SYM] = {0};
 static uint8_t CurrVarIdx = 0;
 static uint8_t a_Code[cfg_MAX_CODE_LEN];
@@ -132,7 +142,7 @@ static void compile_print(void);
 static void debug_print(uint16_t lineno);
 static void compile_string(void);
 static void compile_end(void);
-static void compile_cmd(void);
+static type_t compile_xfunc(void);
 static void compile_break(void);
 static void compile_set1(void);
 static void compile_set2(void);
@@ -151,7 +161,7 @@ static void compile_rnd(void);
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
 static uint16_t sym_get(char *id);
 static void error(char *fmt, ...);
-static char *token(uint8_t tok);
+//static char *token(uint8_t tok);
 static type_t compile_expression(type_t type);
 static type_t compile_and_expr(void);
 static type_t compile_not_expr(void);
@@ -168,8 +178,6 @@ void jbi_dump_code(uint8_t *code, uint16_t size) {
         printf("%02X ", code[i]);
         if((i % 32) == 31) {
             printf("\n");
-        } else if((i % 8) == 7) {
-            printf(": ");
         } 
     }
     printf("\n");
@@ -194,7 +202,6 @@ void jbi_init(void) {
     sym_add("or", 0, OR);
     sym_add("not", 0, NOT);
     sym_add("mod", 0, MOD);
-    sym_add("cmd", 0, CMD);
     sym_add("break", 0, BREAK);
 #ifdef cfg_BYTE_ACCESS
     sym_add("set1", 0, SET1);
@@ -234,6 +241,19 @@ void jbi_init(void) {
     a_Code[Pc++] = k_TAG;
     a_Code[Pc++] = k_VERSION;
     PcStart = Pc;
+}
+
+uint8_t jbi_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type) {
+    if(NumXFuncs >= 16) {
+        return 0;
+    }
+    uint16_t idx = sym_add(name, NumXFuncs, XFUNC);
+    a_XFuncs[NumXFuncs].num_params = num_params;
+    a_XFuncs[NumXFuncs].return_type = return_type;
+    for(uint8_t i = 0; i < num_params; i++) {
+        a_XFuncs[NumXFuncs].type[i] = types[i];
+    }
+    return NumXFuncs++;
 }
 
 uint8_t *jbi_compiler(char *filename, uint16_t *p_len) {
@@ -405,7 +425,8 @@ static void match(uint8_t expected) {
     uint8_t tok = next();
     if (tok == expected) {
     } else {
-        error("%s expected instead of '%s'", token(expected), a_Buff);
+        //error("%s expected instead of '%s'", token(expected), a_Buff);
+        error("syntax error at '%s'", a_Buff);
     }
 }
 
@@ -478,7 +499,7 @@ static void compile_stmt(void) {
     case PRINT: compile_print(); break;
     case NEXT: compile_next(); break;
     case END: compile_end(); break;
-    case CMD: compile_cmd(); break;
+    case XFUNC: compile_xfunc(); break;
     case BREAK: compile_break(); break;
 #ifdef cfg_BYTE_ACCESS    
     case SET1: compile_set1(); break;
@@ -494,7 +515,8 @@ static void compile_stmt(void) {
     case TRON: compile_tron(); break;
     case TROFF: compile_troff(); break;
     case FREE: compile_free(); break;
-    default: error("unknown statement %s", token(tok)); break;
+    //default: error("unknown statement %s", token(tok)); break;
+    default: error("syntax error at '%s'", a_Buff); break;
     }
 }
 
@@ -657,7 +679,7 @@ static void compile_var(void) {
         a_Code[Pc++] = k_SET_ARR_ELEM_N2;
         a_Code[Pc++] = a_Symbol[idx].value;
     } else {
-        error("unknown variable type '%s'", token(tok));
+        error("unknown variable type at '%s'", a_Buff);
     }
 }
 
@@ -755,12 +777,26 @@ static void compile_end(void) {
     a_Code[Pc++] = k_END;
 }
 
-static void compile_cmd(void) {
+static type_t compile_xfunc(void) {
+    uint8_t idx = sym_get(a_Buff);
+    uint8_t tok;
+    if(idx >= NumXFuncs) {
+        error("unknown external function '%s'", a_Buff);
+        return e_NUM;
+    }
     match('(');
-    compile_expression(e_NUM);
+    for(uint8_t i = 0; i < a_XFuncs[idx].num_params; i++) {
+        compile_expression(a_XFuncs[idx].type[i]);
+        a_Code[Pc++] = k_PUSH_PARAM_N1;
+        tok = lookahead();
+        if(tok == ',') {
+            match(',');
+        }
+    }
+    a_Code[Pc++] = k_XFUNC_N2;
+    a_Code[Pc++] = idx;
     match(')');
-    a_Code[Pc++] = k_FUNC_CALL;
-    a_Code[Pc++] = k_CALL_CMD_N2;
+    return a_XFuncs[idx].return_type;
 }
 
 static void compile_break(void) {
@@ -953,6 +989,7 @@ static uint16_t sym_get(char *id) {
             break;
         }
     }
+    error("unknown symbol '%s'", id);
     return 0;
 }
 
@@ -968,6 +1005,7 @@ static void error(char *fmt, ...) {
     p_pos[0] = '\0';
 }
 
+#if 0
 static char *token(uint8_t tok) {
     static char s[5];
     if(tok >= LET && tok <= STACK) {
@@ -980,6 +1018,7 @@ static char *token(uint8_t tok) {
         return s;
     }
 } 
+#endif
 
 /**************************************************************************************************
  * Expression compiler
@@ -1239,8 +1278,7 @@ static type_t compile_factor(void) {
         match(',');
         compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_FUNC_CALL;
-        a_Code[Pc++] = k_LEFT_STR_N2;
+        a_Code[Pc++] = k_LEFT_STR_N1;
         type = e_STR;
         break;
     case RIGHTS: // right function
@@ -1250,8 +1288,7 @@ static type_t compile_factor(void) {
         match(',');
         compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_FUNC_CALL;
-        a_Code[Pc++] = k_RIGHT_STR_N2;
+        a_Code[Pc++] = k_RIGHT_STR_N1;
         type = e_STR;
         break;
     case MIDS: // mid function
@@ -1263,8 +1300,7 @@ static type_t compile_factor(void) {
         match(',');
         type = compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_FUNC_CALL;
-        a_Code[Pc++] = k_MID_STR_N2;
+        a_Code[Pc++] = k_MID_STR_N1;
         type = e_STR;
         break;
     case LEN: // len function
@@ -1272,8 +1308,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_STR);
         match(')');
-        a_Code[Pc++] = k_FUNC_CALL;
-        a_Code[Pc++] = k_STR_LEN_N2;
+        a_Code[Pc++] = k_STR_LEN_N1;
         type = e_NUM;
         break;
     case VAL: // val function
@@ -1281,8 +1316,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_STR);
         match(')');
-        a_Code[Pc++] = k_FUNC_CALL;
-        a_Code[Pc++] = k_STR_TO_VAL_N2;
+        a_Code[Pc++] = k_STR_TO_VAL_N1;
         type = e_NUM;
         break;
     case STRS: // str$ function
@@ -1290,8 +1324,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_FUNC_CALL;
-        a_Code[Pc++] = k_VAL_TO_STR_N2;
+        a_Code[Pc++] = k_VAL_TO_STR_N1;
         type = e_STR;
         break;
     case HEXS: // hex function
@@ -1299,8 +1332,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_FUNC_CALL;
-        a_Code[Pc++] = k_VAL_TO_HEX_N2;
+        a_Code[Pc++] = k_VAL_TO_HEX_N1;
         type = e_STR;
         break;
     case CHRS: // chr$ function
@@ -1308,8 +1340,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(')');
-        a_Code[Pc++] = k_FUNC_CALL;
-        a_Code[Pc++] = k_VAL_TO_CHR_N2;
+        a_Code[Pc++] = k_VAL_TO_CHR_N1;
         type = e_STR;
         break;
     case INSTR: // instr function
@@ -1321,8 +1352,7 @@ static type_t compile_factor(void) {
         match(',');
         compile_expression(e_STR);
         match(')');
-        a_Code[Pc++] = k_FUNC_CALL;
-        a_Code[Pc++] = k_INSTR_N2;
+        a_Code[Pc++] = k_INSTR_N1;
         type = e_NUM;
         break;
 #endif        
@@ -1330,7 +1360,7 @@ static type_t compile_factor(void) {
         match(STACK);
         match('(');
         match(')');
-        a_Code[Pc++] = k_POP_PUSH_N1;
+        a_Code[Pc++] = k_STACK_N1;
         type = e_NUM;
         break;
     case RND: // Random number
@@ -1342,6 +1372,11 @@ static type_t compile_factor(void) {
         type = e_NUM;
         break;
     case ELSE:
+        break;
+    case XFUNC:
+        match(XFUNC);
+        type = compile_xfunc();
+        a_Code[Pc++] = k_STACK_N1;
         break;
     default:
         error("unknown factor '%u'", tok);
