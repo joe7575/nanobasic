@@ -60,7 +60,7 @@ int main(int argc, char* argv[]) {
         printf("Usage: %s <programm>\n", argv[0]);
         return 1;
     }
-    printf("Joes Basic Compiler V1.0\n");
+    printf("NanoBasic Compiler V1.0\n");
 
     nb_init();
     //assert(nb_define_external_function("foo", 2, (uint8_t[]){1, 2}, 0) == 0);
@@ -74,6 +74,7 @@ int main(int argc, char* argv[]) {
     if(code == NULL) {
         return 1;
     }
+    num_vars = nb_get_num_vars();
     nb_output_symbol_table();
     on_can = nb_get_label_address("200");
     if(on_can == 0) {
@@ -81,12 +82,11 @@ int main(int argc, char* argv[]) {
     }
     buf1 = nb_get_var_num("buf1");
 
-    printf("\nJoes Basic Interpreter V1.0\n");
+    printf("\nNanoBasic Interpreter V1.0\n");
     void *instance = nb_create(code);
     //test_memory(instance);
     //return 0;
-    nb_dump_code(code, size);
-    num_vars = nb_get_num_vars();
+    //nb_dump_code(code, size);
 
     while(res >= NB_BUSY) {
         // A simple for loop "for i = 1 to 100: print i: next i" 
@@ -117,21 +117,3 @@ int main(int argc, char* argv[]) {
     printf("Ready.\n");
     return 0;
 }
-
-            // case k_POP_PTR_N2:
-            //     var = p_programm[vm->pc + 1];
-            //     addr = vm->variables[var];
-            //     if(addr > 0) {
-            //         nb_mem_free(vm, addr);
-            //     }
-            //     addr = DPOP();
-            //     size = nb_mem_get_blocksize(vm, addr);
-            //     addr2 = nb_mem_alloc(vm, size);
-            //     if(addr2 == 0) {
-            //         PRINTF("Error: Out of memory\n");
-            //         return NB_ERROR;
-            //     }
-            //     memcpy(&vm->heap[addr2 & 0x7FFF], &vm->heap[addr & 0x7FFF], size);
-            //     vm->variables[var] = addr2;
-            //     vm->pc += 2;
-            //     break;

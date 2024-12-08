@@ -32,6 +32,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define MAX_LINE_LEN        256
 #define MAX_SYM_LEN         8
+#define MAX_XFUNC_PARAMS    8
+#define MAX_NUM_XFUNC       16
 
 #define MIN(a,b)        ((a) < (b) ? (a) : (b))
 
@@ -55,10 +57,10 @@ enum {
 };
 
 typedef enum type_t {
-    e_ANY,
-    e_NUM,
-    e_STR,
-    e_ARR,
+    e_ANY = 0,
+    e_NUM = NB_NUM,
+    e_STR = NB_STR,
+    e_ARR = NB_ARR,
     e_CNST,
 } type_t;
 
@@ -91,13 +93,14 @@ typedef struct {
     uint16_t value;  // Variable index (0..n) or label address
 } sym_t;
 
+// Define external function
 typedef struct {
     uint8_t num_params;
     uint8_t return_type;
-    uint8_t type[4];
+    uint8_t type[MAX_XFUNC_PARAMS];];
 } xfunc_t;
 
-static xfunc_t a_XFuncs[16] = {0};
+static xfunc_t a_XFuncs[MAX_NUM_XFUNC] = {0};
 static uint8_t NumXFuncs = 0;
 static sym_t a_Symbol[cfg_MAX_NUM_SYM] = {0};
 static uint8_t CurrVarIdx = 0;
@@ -244,7 +247,10 @@ void nb_init(void) {
 }
 
 uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type) {
-    if(NumXFuncs >= 16) {
+    if(NumXFuncs >= MAX_NUM_XFUNC) {
+        return 0;
+    }
+    if(num_params > MAX_XFUNC_PARAMS) {
         return 0;
     }
     uint16_t idx = sym_add(name, NumXFuncs, XFUNC);
@@ -256,7 +262,7 @@ uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *typ
     return NumXFuncs++;
 }
 
-uint8_t *nb_compiler(char *filename, uint16_t *p_len) {
+uint8_t *nb_compile(char *filename, uint16_t *p_len) {
     FILE *fp = fopen(filename, "r");
     if(fp == NULL) {
         printf("Error: could not open file %s\n", filename);

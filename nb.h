@@ -23,6 +23,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <stdbool.h>
 #include "nb_cfg.h"
 
+#define NB_NUM      (1)
+#define NB_STR      (2)
+#define NB_ARR      (3)
+
 enum {
   NB_END = 0,  // programm end reached
   NB_ERROR,    // error in programm
