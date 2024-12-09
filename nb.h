@@ -45,7 +45,6 @@ enum {
 /*
 ** To be implemented by the user
 */
-void nb_reset_file_pos(void *fp);
 char *nb_get_code_line(void *fp, char *line, int max_line_len);
 void nb_print(const char * format, ...);
 

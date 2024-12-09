@@ -49,9 +49,6 @@ int msleep(uint32_t msec)
     return res;
 }
 
-void nb_reset_file_pos(void *fp) {
-    fseek(fp, 0, SEEK_SET);
-}
 char *nb_get_code_line(void *fp, char *line, int max_line_len) {
     return fgets(line, max_line_len, fp);
 }
