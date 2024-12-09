@@ -1,8 +1,9 @@
-let A = 4
-let B$ = "test"
-foo(A, B$)
-let C = foo2()
-print "C =" C
-let D$ = FOO3()
-print "D$ =" D$
+let count = 10
+let sum = 0
+dim A(10)
+for i = 1 to count
+let sum = sum + 1
+let A(i) = sum
+next i
+print sum, A(1), A(2), A(3), A(4), A(5), A(6), A(7), A(8), A(9), A(10)
 end

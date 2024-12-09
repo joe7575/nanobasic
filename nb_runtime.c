@@ -97,35 +97,45 @@ void nb_push_str(void *pv_vm, char *str) {
             nb_print("Error: Out of memory\n");
             return;
         }
-        strcpy(&vm->heap[addr & 0x7FFF], str);
+        strcpy((char*)&vm->heap[addr & 0x7FFF], str);
         PPUSH(addr);
     }
 }
 
-uint32_t *nb_pop_arr(void *pv_vm, uint32_t *arr, uint8_t len) {
+uint16_t nb_read_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes) {
     t_VM *vm = pv_vm;
     if(vm->psp == 0) {
-        return NULL;
+        return 0;
     }
-    uint16_t addr = PPOP();
+    uint16_t addr = vm->variables[var];
+    if(addr == 0) {
+        return 0;
+    }
     uint16_t size = nb_mem_get_blocksize(vm, addr);
-    size = MIN(size, len * sizeof(uint32_t));
+    if(size == 0) {
+        return 0;
+    }
+    size = MIN(size, bytes);
     memcpy(arr, &vm->heap[addr & 0x7FFF], size);
-    return arr;
+    return size;
 }
 
-void nb_push_arr(void *pv_vm, uint32_t *arr, uint8_t len) {
+uint16_t nb_write_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes) {
     t_VM *vm = pv_vm;
-    if(vm->psp < cfg_STACK_SIZE) {
-        uint16_t size = len * sizeof(uint32_t);
-        uint16_t addr = nb_mem_alloc(vm, size);
-        if(addr == 0) {
-            nb_print("Error: Out of memory\n");
-            return;
-        }
-        memcpy(&vm->heap[addr & 0x7FFF], arr, size);
-        PPUSH(addr);
+    if(vm->psp >= cfg_STACK_SIZE - 1) {
+        return 0;
     }
+    uint16_t addr = vm->variables[var];
+    if(addr == 0) {
+        return 0;
+    }
+    uint16_t size = nb_mem_get_blocksize(vm, addr);
+    if(size == 0) {
+        return 0;
+    }
+    size = MIN(size, bytes);
+    memcpy(&vm->heap[addr & 0x7FFF], arr, size);
+    return size;
 }
 
 uint8_t nb_stack_depth(void *pv_vm) {
@@ -142,11 +152,10 @@ void nb_set_pc(void * pv_vm, uint16_t addr) {
 uint16_t nb_run(void *pv_vm, uint16_t cycles) {
     uint32_t tmp1, tmp2;
     uint16_t idx;
-    uint16_t addr, addr2, size;
+    uint16_t addr, size;
     uint16_t offs1, offs2;
     uint16_t size1, size2;
     uint8_t  var, val;
-    uint8_t  *ptr;
     char     *str;
     t_VM *vm = pv_vm;
 
@@ -214,7 +223,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             break;
         case k_POP_STR_N2:
             var = vm->p_programm[vm->pc + 1];
-            if(vm->variables[var] > 0) {
+            if(vm->variables[var] > 0x7FFF) {
                 nb_mem_free(vm, vm->variables[var]);
             }
             vm->variables[var] = DPOP();
@@ -334,8 +343,8 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
               vm->pc = tmp1;
             } else {
               vm->pc += 4;
-              DPOP();  // remove step value
-              DPOP();  // remove loop end value
+              (void)DPOP();  // remove step value
+              (void)DPOP();  // remove loop end value
             }
             break;
         case k_IF_N3:
@@ -478,7 +487,8 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 1;
             break;
 #endif
-        case k_STACK_N1:
+        case k_PARAM_N1:
+        case k_PARAMS_N1:
             if(vm->psp > 0) {
                     tmp1 = PPOP();
             } else {
@@ -498,7 +508,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
         case k_ERASE_ARR_N2:
             var = vm->p_programm[vm->pc + 1];
             addr = vm->variables[var];
-            if(addr > 0) {
+            if(addr > 0x7FFF) {
                 nb_mem_free(vm, addr);
             }
             vm->variables[var] = 0;
@@ -527,8 +537,8 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            strcpy(&vm->heap[addr & 0x7FFF], STR(tmp1));
-            strcat(&vm->heap[addr & 0x7FFF], STR(tmp2));
+            strcpy((char*)&vm->heap[addr & 0x7FFF], STR(tmp1));
+            strcat((char*)&vm->heap[addr & 0x7FFF], STR(tmp2));
             DPUSH(addr);
             vm->pc += 1;
             break;
@@ -575,7 +585,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            strncpy(&vm->heap[addr & 0x7FFF], STR(tmp1), tmp2);
+            strncpy((char*)&vm->heap[addr & 0x7FFF], STR(tmp1), tmp2);
             DPUSH(addr);
             vm->pc += 1;
             break;
@@ -587,7 +597,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            strncpy(&vm->heap[addr & 0x7FFF], STR(tmp1) + strlen(STR(tmp1)) - tmp2, tmp2);
+            strncpy((char*)&vm->heap[addr & 0x7FFF], STR(tmp1) + strlen(STR(tmp1)) - tmp2, tmp2);
             DPUSH(addr);
             vm->pc += 1;
             break;
@@ -600,7 +610,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            strncpy(&vm->heap[addr & 0x7FFF], STR(idx) + tmp1, tmp2);
+            strncpy((char*)&vm->heap[addr & 0x7FFF], STR(idx) + tmp1, tmp2);
             DPUSH(addr);
             vm->pc += 1;
             break;
@@ -621,7 +631,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            sprintf(&vm->heap[addr & 0x7FFF], "%d", tmp1);
+            sprintf((char*)&vm->heap[addr & 0x7FFF], "%d", tmp1);
             DPUSH(addr);
             vm->pc += 1;
             break;
@@ -632,7 +642,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            sprintf(&vm->heap[addr & 0x7FFF], "%X", tmp1);
+            sprintf((char*)&vm->heap[addr & 0x7FFF], "%X", tmp1);
             DPUSH(addr);
             vm->pc += 1;
             break;

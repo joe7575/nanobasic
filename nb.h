@@ -23,12 +23,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <stdbool.h>
 #include "nb_cfg.h"
 
-// Data types for 'nb_define_external_function()'
+/*
+** Data types for 'nb_define_external_function()'
+*/
+#define NB_NONE     (0)
 #define NB_NUM      (1)
 #define NB_STR      (2)
 #define NB_ARR      (3)
 
-// Return values of 'nb_run()'
+/*
+** Return values of 'nb_run()'
+*/
 enum {
   NB_END = 0,  // programm end reached
   NB_ERROR,    // error in programm
@@ -37,34 +42,54 @@ enum {
   NB_XFUNC,    // 'call' external function
 };
 
-// To be implemented by the user
+/*
+** To be implemented by the user
+*/
 void nb_reset_file_pos(void *fp);
 char *nb_get_code_line(void *fp, char *line, int max_line_len);
 void nb_print(const char * format, ...);
 
-// Compiler
+/*
+** Compiler
+*/
 void nb_init(void);
 uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type);
 uint16_t nb_compile(void *fp, uint8_t *p_code, uint16_t *p_code_size, uint8_t *p_num_vars);
 
-// Interpreter
+/*
+** Interpreter
+*/
 void *nb_create(uint8_t* p_programm, uint16_t code_size, uint16_t max_code_size, uint8_t num_vars);
 uint16_t nb_run(void *pv_vm, uint16_t cycles);
 void nb_destroy(void * pv_vm);
 
-// Helper functions
+/*
+** Helper functions
+*/
 void nb_dump_code(uint8_t *code, uint16_t size);
 void nb_output_symbol_table(void);
 
-// Call a function in the VM
+/*
+** Call a function in the VM
+*/
+// return 0 if not found
 uint16_t nb_get_label_address(char *name);
+// return 255 if not found
 void nb_set_pc(void * pv_vm, uint16_t addr);
 
-// Stack/parameter functions
+/*
+** Stack/parameter functions
+*/
 uint8_t nb_stack_depth(void *pv_vm);
 uint32_t nb_pop_num(void *pv_vm);
 void nb_push_num(void *pv_vm, uint32_t value);
 char *nb_pop_str(void *pv_vm, char *str, uint8_t len);
 void nb_push_str(void *pv_vm, char *str);
-uint32_t *nb_pop_arr(void *pv_vm, uint32_t *arr, uint8_t len);
-void nb_push_arr(void *pv_vm, uint32_t *arr, uint8_t len);
+
+/*
+** Array access functions
+*/
+// provide the name in lower case
+uint16_t jbi_get_var_num(char *name);
+uint16_t nb_read_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes);
+uint16_t nb_write_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes);

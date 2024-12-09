@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.0.0)
 project(tinybasic VERSION 0.1.0 LANGUAGES C)
 
 #include_directories(./core)
+add_compile_options(-Wall)
 
 add_executable(nanobasic
     ./nb_scanner.c

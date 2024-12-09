@@ -31,7 +31,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define MAX_LINE_LEN        256
 #define MAX_SYM_LEN         8
 #define MAX_XFUNC_PARAMS    8
-#define MAX_NUM_XFUNC       16
 #define MAX_CODE_PER_LINE   50 // aprox. max. 50 bytes per line
 
 // Token types
@@ -47,10 +46,10 @@ enum {
     SET1, SET2, SET4, GET1,     // 160 - 163    
     GET2, GET4, LEFTS, RIGHTS,  // 164 - 167
     MIDS, LEN, VAL, STRS,       // 168 - 171
-    SPC, STACK, COPY, CONST,    // 172 - 175
+    SPC, PARAM, COPY, CONST,    // 172 - 175
     ERASE, ELSE, HEXS, CHRS,    // 176 - 179
     INSTR, ON, TRON, TROFF,     // 180 - 183
-    FREE, RND,                  // 184 - 185
+    FREE, RND, PARAMS,          // 184 - 186
 };
 
 // Expression result types
@@ -77,14 +76,20 @@ typedef struct {
     uint8_t type[MAX_XFUNC_PARAMS];
 } xfunc_t;
 
-static xfunc_t a_XFuncs[MAX_NUM_XFUNC] = {0};
+typedef struct {
+    uint8_t idx;
+    uint16_t pos;
+} fwdecl_t;
+
+static fwdecl_t a_ForwardDeclaration[cfg_MAX_FW_DECL] = {0};
+static uint8_t NumFwDecls = 0;
+static xfunc_t a_XFuncs[cfg_MAX_NUM_XFUNC] = {0};
 static uint8_t NumXFuncs = 0;
 static sym_t a_Symbol[cfg_MAX_NUM_SYM] = {0};
 static uint8_t CurrVarIdx = 0;
 static uint8_t *p_Code;
 static uint16_t MaxCodeSize = 0;
 static uint16_t Pc = 0;
-static uint16_t PcStart = 0;
 static uint16_t Linenum = 0;
 static uint16_t ErrCount = 0;
 static uint16_t SymIdx = 0;
@@ -100,7 +105,6 @@ static uint8_t NextTok;
 static uint8_t ForLoopIdx = 0;
 static bool TraceOn = false;
 
-static void compile(void *fp);
 static uint8_t next_token(void);
 static uint8_t lookahead(void);
 static uint8_t next(void);
@@ -118,7 +122,6 @@ static void compile_return(void);
 static void compile_var(void);
 static void compile_dim(void);
 static void remark(void);
-static void compile_comment(void);
 static void compile_print(void);
 static void debug_print(uint16_t lineno);
 static void compile_string(void);
@@ -138,11 +141,12 @@ static uint8_t list_of_numbers(void);
 static void compile_tron(void);
 static void compile_troff(void);
 static void compile_free(void);
-static void compile_rnd(void);
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
 static uint16_t sym_get(char *id);
 static void error(char *fmt, ...);
 static uint8_t get_num_vars(void);
+static void forward_declaration(uint16_t idx, uint16_t pos);
+static void resolve_forward_declarations(void);
 static type_t compile_expression(type_t type);
 static type_t compile_and_expr(void);
 static type_t compile_not_expr(void);
@@ -192,7 +196,7 @@ void nb_init(void) {
     sym_add("str$", 0, STRS);
     sym_add("spc", 0, SPC);
 #endif
-    sym_add("stack", 0, STACK);
+    sym_add("param", 0, PARAM);
     sym_add("copy", 0, COPY);
     sym_add("const", 0, CONST);
     sym_add("erase", 0, ERASE);
@@ -207,16 +211,19 @@ void nb_init(void) {
     sym_add("troff", 0, TROFF);
     sym_add("free", 0, FREE);
     sym_add("rnd", 0, RND);
+    sym_add("param$", 0, PARAMS);
 }
 
 uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type) {
-    if(NumXFuncs >= MAX_NUM_XFUNC) {
+    if(NumXFuncs >= cfg_MAX_NUM_XFUNC) {
+        error("too many external functions");
         return 0;
     }
     if(num_params > MAX_XFUNC_PARAMS) {
+        error("too many parameters");
         return 0;
     }
-    uint16_t idx = sym_add(name, NumXFuncs, XFUNC);
+    sym_add(name, NumXFuncs, XFUNC);
     a_XFuncs[NumXFuncs].num_params = num_params;
     a_XFuncs[NumXFuncs].return_type = return_type;
     for(uint8_t i = 0; i < num_params; i++) {
@@ -226,24 +233,31 @@ uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *typ
 }
 
 uint16_t nb_compile(void *fp, uint8_t *p_code, uint16_t *p_code_size, uint8_t *p_num_vars) {
-    nb_print("- pass1\n");
     p_Code = p_code;
     StartOfVars = CurrVarIdx;
     CurrVarIdx = 0;
     Pc = 0;
     p_Code[Pc++] = k_TAG;
     p_Code[Pc++] = k_VERSION;
-    PcStart = Pc;
     MaxCodeSize = *p_code_size;
-    compile(fp);
+    Linenum = 0;
+    ErrCount = 0;
+    TraceOn = false;
+
+    while(nb_get_code_line(fp, a_Line, MAX_LINE_LEN) != NULL) {
+#ifndef cfg_LINE_NUMBERS        
+        Linenum++;
+#endif
+        p_pos = p_next = a_Line;
+        compile_line();
+    }
 
     if(ErrCount > 0) {
         *p_code_size = 0;
         return ErrCount;
     }
 
-    nb_print("- pass2\n");
-    compile(fp);
+    resolve_forward_declarations();
 
     *p_code_size = Pc;
     *p_num_vars = get_num_vars();
@@ -282,6 +296,7 @@ void nb_output_symbol_table(void) {
 #endif
 }
 
+// return 0 if not found
 uint16_t nb_get_label_address(char *name) {
     for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type == LABEL && strcmp(a_Symbol[i].name, name) == 0)
@@ -292,25 +307,20 @@ uint16_t nb_get_label_address(char *name) {
     return 0;
 }   
 
+// return 255 if not found
+uint16_t jbi_get_var_num(char *name) {
+    for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
+        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL && strcmp(a_Symbol[i].name, name) == 0)
+        {
+            return a_Symbol[i].value;
+        }
+    }
+    return -1;
+}   
+
 /*************************************************************************************************
 ** Static functions
 *************************************************************************************************/
-static void compile(void *fp) {
-    Linenum = 0;
-    ErrCount = 0;
-    Pc = PcStart;
-    TraceOn = false;
-
-    nb_reset_file_pos(fp);
-    while(nb_get_code_line(fp, a_Line, MAX_LINE_LEN) != NULL) {
-#ifndef cfg_LINE_NUMBERS        
-        Linenum++;
-#endif
-        p_pos = p_next = a_Line;
-        compile_line();
-    }
-}
-
 static uint8_t next_token(void) {
     if(*p_pos == '\0') {
         return 0; // End of line
@@ -373,9 +383,6 @@ static uint8_t next(void) {
        NextTok = next_token();
     }
     p_pos = p_next;
-#ifdef DEBUG
-    nb_print("next: %s\n", a_Buff);
-#endif
     return NextTok;
 }
 
@@ -544,7 +551,7 @@ static void compile_next(void) {
 }
 
 static void compile_if(void) {
-    uint8_t tok, op;
+    uint8_t tok;
 
     compile_expression(e_NUM);
     p_Code[Pc++] = k_IF_N3;
@@ -583,6 +590,7 @@ static void compile_goto(void) {
     label();
     addr = a_Symbol[SymIdx].value;
 #endif
+    forward_declaration(SymIdx, Pc + 1);
     p_Code[Pc++] = k_GOTO_N3;
     p_Code[Pc++] = addr & 0xFF;
     p_Code[Pc++] = (addr >> 8) & 0xFF;
@@ -597,6 +605,7 @@ static void compile_gosub(void) {
     label();
     addr = a_Symbol[SymIdx].value;
 #endif
+    forward_declaration(SymIdx, Pc + 1);
     p_Code[Pc++] = k_GOSUB_N3;
     p_Code[Pc++] = addr & 0xFF;
     p_Code[Pc++] = (addr >> 8) & 0xFF;
@@ -808,13 +817,13 @@ static void compile_set(uint8_t instr) {
 }
 
 static void compile_get(uint8_t tok, uint8_t instr) {
-    uint8_t idx, type;
+    uint8_t idx;
     match(tok);
     match('(');
     match(ARR);
     idx = SymIdx;
     match(',');
-    type = compile_expression(e_NUM);
+    compile_expression(e_NUM);
     match(')');
     p_Code[Pc++] = instr;
     p_Code[Pc++] = a_Symbol[idx].value;
@@ -822,7 +831,7 @@ static void compile_get(uint8_t tok, uint8_t instr) {
 #endif
 
 static void compile_const(void) {
-    uint8_t tok = next();
+    next();
     uint16_t idx = SymIdx;
     match(EQ);
     match(NUM);
@@ -930,6 +939,7 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
         }
     }
     error("symbol table full");
+    return 0;
 }
 
 static uint16_t sym_get(char *id) {
@@ -957,14 +967,19 @@ static uint16_t sym_get(char *id) {
 
 static void error(char *fmt, ...) {
     va_list args;
-    va_start(args, fmt);
+
     nb_print("Error in line %u: ", Linenum);
-    vprintf(fmt, args);
+
+    va_start(args, fmt);
+    nb_print(fmt, args);
     va_end(args);
+
     nb_print("\n");
     ErrCount++;
     p_pos = p_next;
-    p_pos[0] = '\0';
+    if(p_pos != NULL) {
+        p_pos[0] = '\0';
+    }
 }
 
 static uint8_t get_num_vars(void) {
@@ -977,6 +992,28 @@ static uint8_t get_num_vars(void) {
         }
     }
     return idx;
+}
+
+static void forward_declaration(uint16_t idx, uint16_t pos) {
+    if(NumFwDecls < cfg_MAX_FW_DECL) {
+        a_ForwardDeclaration[NumFwDecls].idx = idx;
+        a_ForwardDeclaration[NumFwDecls].pos = pos;
+        NumFwDecls++;
+    } else {
+        error("too many forward declarations");
+    }
+}
+
+static void resolve_forward_declarations(void) {
+    uint16_t idx, pos, addr;
+    for(uint8_t i = 0; i < NumFwDecls; i++) {
+        idx = a_ForwardDeclaration[i].idx;
+        pos = a_ForwardDeclaration[i].pos;
+        addr = a_Symbol[idx].value;
+        p_Code[pos + 0] = addr & 0xFF;
+        p_Code[pos + 1] = (addr >> 8) & 0xFF;
+    }
+    NumFwDecls = 0;
 }
 
 /**************************************************************************************************
@@ -1132,7 +1169,6 @@ static type_t compile_term(void) {
 
 static type_t compile_factor(void) {
     type_t type = 0;
-    uint8_t idx;
     uint8_t tok = lookahead();
     switch(tok) {
     case '(':
@@ -1315,12 +1351,19 @@ static type_t compile_factor(void) {
         type = e_NUM;
         break;
 #endif        
-    case STACK: // Move value from (external) parameter stack to the data stack
-        match(STACK);
+    case PARAM: // Move value from (external) parameter stack to the data stack
+        match(PARAM);
         match('(');
         match(')');
-        p_Code[Pc++] = k_STACK_N1;
+        p_Code[Pc++] = k_PARAM_N1;
         type = e_NUM;
+        break;
+    case PARAMS: // Move value from (external) parameter stack to the data stack
+        match(PARAMS);
+        match('(');
+        match(')');
+        p_Code[Pc++] = k_PARAMS_N1;
+        type = e_STR;
         break;
     case RND: // Random number
         match(RND);
@@ -1335,7 +1378,7 @@ static type_t compile_factor(void) {
     case XFUNC:
         match(XFUNC);
         type = compile_xfunc();
-        p_Code[Pc++] = k_STACK_N1;
+        p_Code[Pc++] = k_PARAM_N1;
         break;
     default:
         error("unknown factor '%u'", tok);

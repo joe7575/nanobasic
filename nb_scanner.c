@@ -135,6 +135,7 @@ char *nb_scanner(char *p_in, char *p_out) {
         *p_out = '\0';
         return NULL;
     }
+    return NULL;
 }
 
 #ifdef TEST
