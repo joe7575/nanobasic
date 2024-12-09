@@ -1148,7 +1148,7 @@ static type_t compile_add_expr(void) {
 static type_t compile_term(void) {
     type_t type1 = compile_factor();
     uint8_t op = lookahead();
-    while(op == '*' || op == '/' || op == '%') {
+    while(op == '*' || op == '/' || op == MOD) {
         match(op);
         type_t type2 = compile_factor();
         if(type1 != e_NUM || type2 != e_NUM) {
@@ -1228,7 +1228,7 @@ static type_t compile_factor(void) {
             p_Code[Pc++] = k_GET_ARR_ELEM_N2;
             p_Code[Pc++] = val;
             type = e_NUM;
-        } else { // left$(A,8) or copy(A+0,...)
+        } else { // left$(A,8) or copy(A, 0,...)
             p_Code[Pc++] = k_PUSH_VAR_N2;
             p_Code[Pc++] = a_Symbol[SymIdx].value;
             type = e_ARR;
