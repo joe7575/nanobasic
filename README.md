@@ -1,56 +1,44 @@
 NanoBasic
 =========
 
-A small BASIC compiler with virtual machine implemented in C.
+A small BASIC compiler with virtual machine implemented.
+This software is written from scratch in C.
+
+Most of the common BASIC keywords are supported:
 
 ```bnf
-    line = number statements CR | statements CR | label statements CR
-    statements = statement (: statement)*
-    statement = FOR var '=' expression TO expression (STEP expression)?
-                NEXT (var)?
-                IF expression (THEN statements | GOTO number) (ELSE statements)?
-                GOTO (number|label)
-                GOSUB (number|label)
-                RETURN
-                ON expression GOSUB expr-list
-                ON expression GOTO expr-list
-                LET (var '=' expression | var '(' expression ')' '=' expression )
-                DIM var '(' expression ')'
-                PRINT print-list
-                END
-                BREAK
-                SET1 '(' arr ',' expression ',' expression ')'
-                SET2 '(' arr ',' expression ',' expression ')'
-                SET4 '(' arr ',' expression ',' expression ')'
-                COPY '(' arr ',' expression ',' arr ',' expression ',' expression ')'
-                CONST var '=' number
-                ERASE arr
-                FREE '(' ')'
-                TRON
-                TROFF
-
-    print-list = ( string | expression | SPC ) ';' print-list
-                 ( string | expression | SPC ) ',' print-list
-                 ( string | expression | SPC ) ' ' print-list
-                 ( string | expression | SPC ) ';'
-                 ( string | expression | SPC ) ','
-
-    expression = and_expr (OR and_expr)*
-    and_expr = not_expr (AND not_expr)*
-    not_expr = NOT comp_expr
-               comp_expr
-    comp_expr = add_expr (relop add_expr)*
-    add_expr = term ((+|-) term)*
-    (+|-|ε) term ((+|-) term)*
-    term ::= factor ((*|/|MOD) factor)*
-    factor ::= const | var | number | '(' expression ')'
-               GET1 '(' arr ',' expression ')'
-               GET2 '(' arr ',' expression ')'
-               GET4 '(' arr ',' expression ')'
-    var ::= A | B | C ... | Y | Z
-    number ::= digit digit*
-    digit ::= 0 | 1 | 2 | 3 | ... | 8 | 9
-    relop ::= < (>|=|ε) | > (<|=|ε) | =
-    string ::= " ( |!|#|$ ... -|.|/|digit|: ... @|A|B|C ... |X|Y|Z)* "
+    PRINT expression-list [ ; | , ]
+    FOR numeric_variable '=' numeric_expression TO numeric_expression [ STEP number ]
+    IF relation-expression THEN statement-list [ ELSE statement-list ]
+    IF relation-expression GOTO line-number [ ELSE statement-list ]
+    GOTO line-number
+    GOSUB line-number
+    ON numeric_expression GOSUB line-number-list
+    ON numeric_expression GOTO line-number-list
+    CONST variable = number
+    LET variable = expression
+    LET string-variable$ = string-expression$
+    DIM array-variable "(" numeric_expression ")"
+    ERASE array-variable
+    RETURN
+    END
+    BREAK
+    TRON, TROFF
+    FREE
+    AND, NOT, OR, RND, MOD, LEN, VAL, SPC
+    LEN, CHR$, MID$, LEFT$, RIGHT$, STR$, HEX$
 ```
 
+Supported data types are:
+
+- Unsigned Integer, 32 bit (0 to 4294967295)
+- String (up to 120 characters)
+- Array (one dimension, up to 128 elements)
+- Constant (numeric only)
+
+The compiler is able to generate a binary file that can be executed by the virtual machine.
+The goal of NanoBasic was to be a small and fast, due to compiler and VM combination.
+The main purpose of NanoBasic is to be embedded in other applications, to provide a simple scripting language
+for configuration and as glue code.
+
+The Basic language is inspired by the original Microsoft Basic known from Home Computers in the 80s.
