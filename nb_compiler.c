@@ -25,10 +25,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <ctype.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <setjmp.h>
 #include "nb.h"
 #include "nb_int.h"
 
-#define MAX_LINE_LEN        256
+#define MAX_LINE_LEN        128
 #define MAX_SYM_LEN         8
 #define MAX_XFUNC_PARAMS    8
 #define MAX_CODE_PER_LINE   50 // aprox. max. 50 bytes per line
@@ -104,6 +105,7 @@ static uint32_t Value;
 static uint8_t NextTok;
 static uint8_t ForLoopIdx = 0;
 static bool TraceOn = false;
+static jmp_buf  JmpBuf;
 
 static uint8_t next_token(void);
 static uint8_t lookahead(void);
@@ -143,7 +145,7 @@ static void compile_troff(void);
 static void compile_free(void);
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
 static uint16_t sym_get(char *id);
-static void error(char *fmt, ...);
+static void error(char *err, char *id);
 static uint8_t get_num_vars(void);
 static void forward_declaration(uint16_t idx, uint16_t pos);
 static void resolve_forward_declarations(void);
@@ -216,11 +218,11 @@ void nb_init(void) {
 
 uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type) {
     if(NumXFuncs >= cfg_MAX_NUM_XFUNC) {
-        error("too many external functions");
+        error("too many external functions", NULL);
         return 0;
     }
     if(num_params > MAX_XFUNC_PARAMS) {
-        error("too many parameters");
+        error("too many parameters", NULL);
         return 0;
     }
     sym_add(name, NumXFuncs, XFUNC);
@@ -244,7 +246,11 @@ uint16_t nb_compile(void *fp, uint8_t *p_code, uint16_t *p_code_size, uint8_t *p
     ErrCount = 0;
     TraceOn = false;
 
+    setjmp(JmpBuf);
     while(nb_get_code_line(fp, a_Line, MAX_LINE_LEN) != NULL) {
+        if(strlen(a_Line) > (MAX_LINE_LEN - 2)) {
+            error("line too long", NULL);
+        }
 #ifndef cfg_LINE_NUMBERS        
         Linenum++;
 #endif
@@ -298,8 +304,17 @@ void nb_output_symbol_table(void) {
 
 // return 0 if not found
 uint16_t nb_get_label_address(char *name) {
+    char str[MAX_SYM_LEN];
+    // Convert to lower case
+    for(uint16_t i = 0; i < MAX_SYM_LEN; i++) {
+        str[i] = tolower(name[i]);
+        if(name[i] == '\0') {
+            break;
+        }
+    }
+
     for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
-        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type == LABEL && strcmp(a_Symbol[i].name, name) == 0)
+        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type == LABEL && strcmp(a_Symbol[i].name, str) == 0)
         {
             return a_Symbol[i].value;
         }
@@ -309,8 +324,17 @@ uint16_t nb_get_label_address(char *name) {
 
 // return 255 if not found
 uint16_t jbi_get_var_num(char *name) {
+    char str[MAX_SYM_LEN];
+    // Convert to lower case
+    for(uint16_t i = 0; i < MAX_SYM_LEN; i++) {
+        str[i] = tolower(name[i]);
+        if(name[i] == '\0') {
+            break;
+        }
+    }
+
     for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
-        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL && strcmp(a_Symbol[i].name, name) == 0)
+        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL && strcmp(a_Symbol[i].name, str) == 0)
         {
             return a_Symbol[i].value;
         }
@@ -322,7 +346,7 @@ uint16_t jbi_get_var_num(char *name) {
 ** Static functions
 *************************************************************************************************/
 static uint8_t next_token(void) {
-    if(*p_pos == '\0') {
+    if(p_pos == NULL || *p_pos == '\0') {
         return 0; // End of line
     }
     p_next = nb_scanner(p_pos, a_Buff);
@@ -366,7 +390,7 @@ static uint8_t next_token(void) {
     if(strlen(a_Buff) == 1) {
         return a_Buff[0]; // Single character
     }
-    error("unknown token %c", a_Buff[0]);
+    error("unknown character", a_Buff);
     return 0;
 }
 
@@ -390,8 +414,7 @@ static void match(uint8_t expected) {
     uint8_t tok = next();
     if (tok == expected) {
     } else {
-        //error("%s expected instead of '%s'", token(expected), a_Buff);
-        error("syntax error at '%s'", a_Buff);
+        error("syntax error", a_Buff);
     }
 }
 
@@ -405,7 +428,7 @@ static void label(void) {
   } else if(tok == LABEL) {
     // Already a label
   } else {
-    error("label expected instead of '%s'", a_Buff);
+    error("label expected", a_Buff);
   }
   match(LABEL);
 }
@@ -448,7 +471,7 @@ static void compile_stmts(void) {
             tok = lookahead();
         }
         if(Pc >= MaxCodeSize - MAX_CODE_PER_LINE) {
-            error("code size exceeded");
+            error("code size exceeded", NULL);
             break;
         }
     }
@@ -484,8 +507,7 @@ static void compile_stmt(void) {
     case TRON: compile_tron(); break;
     case TROFF: compile_troff(); break;
     case FREE: compile_free(); break;
-    //default: error("unknown statement %s", token(tok)); break;
-    default: error("syntax error at '%s'", a_Buff); break;
+    default: error("syntax error", a_Buff); break;
     }
 }
 
@@ -517,8 +539,7 @@ static void compile_for(void) {
     }
     // Save start address
     if(ForLoopIdx >= cfg_MAX_FOR_LOOPS) {
-        error("too many nested 'for' loops");
-        return;
+        error("too many nested 'for' loops", NULL);
     }
     a_ForLoopVariables[ForLoopIdx] = idx;
     a_ForLoopStartAddr[ForLoopIdx++] = Pc;
@@ -532,15 +553,13 @@ static void compile_next(void) {
     uint16_t addr;
 
     if(ForLoopIdx == 0) {
-        error("'next' without 'for'");
-        return;
+        error("'next' without 'for'", NULL);
     }
     idx = a_ForLoopVariables[ForLoopIdx - 1];
     if(tok == ID) {
         match(ID);
         if(idx != SymIdx) {
-            error("mismatched 'for' and 'next'");
-            return;
+            error("mismatched 'for' and 'next'", NULL);
         }
     }
     addr = a_ForLoopStartAddr[--ForLoopIdx];
@@ -567,7 +586,7 @@ static void compile_if(void) {
         compile_goto();
         ACS16(p_Code[pos]) = Pc;
     } else {
-        error("THEN or GOTO expected instead of '%s'", a_Buff);
+        error("THEN or GOTO expected", a_Buff);
     }
     tok = lookahead();
     if(tok == ELSE) {
@@ -638,8 +657,7 @@ static void compile_var(void) {
             p_Code[Pc++] = k_POP_STR_N2;
             p_Code[Pc++] = a_Symbol[idx].value;
         } else {
-            error("type mismatch");
-            return;
+            error("type mismatch", a_Buff);
         }
     } else if(tok == ARR) { // let rx(0) = 1
         match('(');
@@ -650,7 +668,7 @@ static void compile_var(void) {
         p_Code[Pc++] = k_SET_ARR_ELEM_N2;
         p_Code[Pc++] = a_Symbol[idx].value;
     } else {
-        error("unknown variable type at '%s'", a_Buff);
+        error("unknown variable type", a_Buff);
     }
 }
 
@@ -665,7 +683,7 @@ static void compile_dim(void) {
         p_Code[Pc++] = k_DIM_ARR_N2;
         p_Code[Pc++] = a_Symbol[idx].value;
     } else {
-        error("unknown variable type '%u'", tok);
+        error("unknown variable type", a_Buff);
     }
 }
 
@@ -704,8 +722,7 @@ static void compile_print(void) {
             } else if(type == e_STR) {
                 p_Code[Pc++] = k_PRINT_STR_N1;
             } else {
-                error("type mismatch");
-                return;
+                error("type mismatch", a_Buff);
             }
         }
         tok = lookahead();
@@ -752,8 +769,7 @@ static type_t compile_xfunc(void) {
     uint8_t idx = sym_get(a_Buff);
     uint8_t tok;
     if(idx >= NumXFuncs) {
-        error("unknown external function '%s'", a_Buff);
-        return e_NUM;
+        error("unknown external function", a_Buff);
     }
     match('(');
     for(uint8_t i = 0; i < a_XFuncs[idx].num_params; i++) {
@@ -845,7 +861,7 @@ static void compile_erase(void) {
         p_Code[Pc++] = k_ERASE_ARR_N2;
         p_Code[Pc++] = a_Symbol[SymIdx].value;
     } else {
-        error("unknown variable type '%u'", tok);
+        error("unknown variable type", a_Buff);
     }
 }
 
@@ -863,8 +879,7 @@ static void compile_on(void) {
         match(GOTO);
         p_Code[Pc++] = k_ON_GOTO_N2;
     } else {
-        error("GOSUB or GOTO expected instead of '%s'", a_Buff);
-        return;
+        error("GOSUB or GOTO expected", a_Buff);
     }
     pos = Pc;
     p_Code[Pc++] = 0; // number of elements
@@ -938,7 +953,7 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
             return i;
         }
     }
-    error("symbol table full");
+    error("symbol table full", NULL);
     return 0;
 }
 
@@ -961,25 +976,23 @@ static uint16_t sym_get(char *id) {
             break;
         }
     }
-    error("unknown symbol '%s'", id);
+    error("unknown symbol", id);
     return 0;
 }
 
-static void error(char *fmt, ...) {
-    va_list args;
-
+static void error(char *err, char *id) {
     nb_print("Error in line %u: ", Linenum);
-
-    va_start(args, fmt);
-    nb_print(fmt, args);
-    va_end(args);
-
-    nb_print("\n");
+    if(id != NULL && id[0] != '\0') {
+        nb_print("%s at '%s'\n", err, id);
+    } else {
+        nb_print("%s\n", err);
+    }
     ErrCount++;
     p_pos = p_next;
     if(p_pos != NULL) {
         p_pos[0] = '\0';
     }
+    longjmp(JmpBuf, 0);
 }
 
 static uint8_t get_num_vars(void) {
@@ -1000,7 +1013,7 @@ static void forward_declaration(uint16_t idx, uint16_t pos) {
         a_ForwardDeclaration[NumFwDecls].pos = pos;
         NumFwDecls++;
     } else {
-        error("too many forward declarations");
+        error("too many forward declarations", NULL);
     }
 }
 
@@ -1026,14 +1039,13 @@ static type_t compile_expression(type_t type) {
         match(op);
         type_t type2 = compile_and_expr();
         if(type1 != e_NUM || type2 != e_NUM) {
-            error("type mismatch");
-            return type1;
+            error("type mismatch", NULL);
         }
         p_Code[Pc++] = k_OR_N1;
         op = lookahead();
     }
     if(type != e_ANY && type1 != type) {
-        error("type mismatch");
+        error("type mismatch", a_Buff);
     }
     return type1;
 }
@@ -1045,8 +1057,7 @@ static type_t compile_and_expr(void) {
         match(op);
         type_t type2 = compile_not_expr();
         if(type1 != e_NUM || type2 != e_NUM) {
-            error("type mismatch");
-            return type2;
+            error("type mismatch", a_Buff);
         }
         p_Code[Pc++] = k_AND_N1;
         op = lookahead();
@@ -1061,8 +1072,7 @@ static type_t compile_not_expr(void) {
         match(op);
         type = compile_comp_expr();
         if(type != e_NUM) {
-            error("type mismatch");
-            return type;
+            error("type mismatch", a_Buff);
         }
           p_Code[Pc++] = k_NOT_N1;
     } else {
@@ -1078,8 +1088,7 @@ static type_t compile_comp_expr(void) {
         match(op);
         type_t type2 = compile_add_expr();
         if(type1 != type2) {
-            error("type mismatch");
-            return type1;
+            error("type mismatch", a_Buff);
         }
 #ifdef cfg_STRING_SUPPORT        
         if(type1 == e_STR) {
@@ -1090,7 +1099,7 @@ static type_t compile_comp_expr(void) {
             case LQ: p_Code[Pc++] = k_STR_LESS_EQU_N1; break;
             case GR: p_Code[Pc++] = k_STR_GREATER_N1; break;
             case GQ: p_Code[Pc++] = k_STR_GREATER_EQU_N1; break;
-            default: error("unknown operator '%u'", op); break;
+            default: error("unknown operator", a_Buff); break;
             }
         } else {
 #else
@@ -1103,7 +1112,7 @@ static type_t compile_comp_expr(void) {
             case LQ: p_Code[Pc++] = k_LESS_EQU_N1; break;
             case GR: p_Code[Pc++] = k_GREATER_N1; break;
             case GQ: p_Code[Pc++] = k_GREATER_EQU_N1; break;
-            default: error("unknown operator '%u'", op); break;
+            default: error("unknown operator", a_Buff); break;
             }
         }
         op = lookahead();
@@ -1118,8 +1127,7 @@ static type_t compile_add_expr(void) {
         match(op);
         type_t type2 = compile_term();
         if(type1 != type2) {
-            error("type mismatch");
-            return type1;
+            error("type mismatch", a_Buff);
         }
         if(op == '+') {
             if(type1 == e_NUM) {
@@ -1128,16 +1136,14 @@ static type_t compile_add_expr(void) {
 #ifdef cfg_STRING_SUPPORT                
                 p_Code[Pc++] = k_ADD_STR_N1;
 #else
-                error("type mismatch");
-                return type1;
+                error("type mismatch", a_Buff);
 #endif
             }
         } else {
             if(type1 == e_NUM) {
               p_Code[Pc++] = k_SUB_N1;
             } else {
-              error("type mismatch");
-              return type1;
+              error("type mismatch", a_Buff);
             }
         }
         op = lookahead();
@@ -1152,8 +1158,7 @@ static type_t compile_term(void) {
         match(op);
         type_t type2 = compile_factor();
         if(type1 != e_NUM || type2 != e_NUM) {
-            error("type mismatch");
-            return type2;
+            error("type mismatch", a_Buff);
         }
         if(op == '*') {
           p_Code[Pc++] = k_MUL_N1;
@@ -1381,7 +1386,7 @@ static type_t compile_factor(void) {
         p_Code[Pc++] = k_PARAM_N1;
         break;
     default:
-        error("unknown factor '%u'", tok);
+        error("syntax error", a_Buff);
         break;
     }
     return type;

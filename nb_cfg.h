@@ -24,13 +24,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define cfg_BYTE_ACCESS        // enable byte access to arrays
 #define cfg_ON_COMMANDS        // enable ON/GOTO/GOSUB commands
 
-#define cfg_MAX_FOR_LOOPS     (4)   // nested FOR loops (2 values per FOR loop on the datastack)
-#define cfg_DATASTACK_SIZE    (16)  // value for data stack (for expression evaluation and FOR loop variables)
-#define cfg_STACK_SIZE        (8)   // value for call stack and parameter stack
-#define cfg_NUM_VARS          (256) // in the range 8..256
-#define cfg_MEM_HEAP_SIZE     (1024 * 16) // in 1k steps
-#define cfg_MAX_NUM_XFUNC     (16)  // number of external function definitions
-#define cfg_MAX_FW_DECL       (32)  // number of forward declarations (goto/gosub label)
+#define cfg_MAX_FOR_LOOPS       (4)   // nested FOR loops (2 values per FOR loop on the datastack)
+#define cfg_DATASTACK_SIZE      (16)  // value for data stack (for expression evaluation and FOR loop variables)
+#define cfg_STACK_SIZE          (8)   // value for call stack and parameter stack
+#define cfg_NUM_VARS            (256) // in the range 8..256
+#define cfg_MEM_HEAP_SIZE       (1024 * 16) // in 1k steps
+#define cfg_MAX_MEM_BLOCK_SIZE  (512) // in bytes
+#define cfg_MAX_NUM_XFUNC       (16)  // number of external function definitions
+#define cfg_MAX_FW_DECL         (32)  // number of forward declarations (goto/gosub label)
 
 #ifdef cfg_LINE_NUMBERS
     #define cfg_MAX_NUM_SYM     (4000) // for line numbers

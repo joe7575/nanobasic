@@ -82,11 +82,11 @@ int main(int argc, char* argv[]) {
     assert(nb_define_external_function("efunc2", 0, (uint8_t[]){}, NB_NUM) == 1);
     assert(nb_define_external_function("efunc3", 0, (uint8_t[]){}, NB_STR) == 2);
 
-    //FILE *fp = fopen("../examples/temp.bas", "r");
+    FILE *fp = fopen("../examples/temp.bas", "r");
     //FILE *fp = fopen("../examples/lineno.bas", "r");
     //FILE *fp = fopen("../examples/test.bas", "r");
     //FILE *fp = fopen("../examples/basis.bas", "r");
-    FILE *fp = fopen("../examples/ext_func.bas", "r");
+    //FILE *fp = fopen("../examples/ext_func.bas", "r");
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
         return -1;
@@ -107,7 +107,7 @@ int main(int argc, char* argv[]) {
 
     nb_print("\nNanoBasic Interpreter V1.0\n");
     void *instance = nb_create(p_code, code_size, MAX_CODE_SIZE, num_vars);
-    nb_dump_code(p_code, code_size);
+    //nb_dump_code(p_code, code_size);
 
     while(res >= NB_BUSY) {
         // A simple for loop "for i = 1 to 100: print i: next i" 

@@ -104,9 +104,6 @@ void nb_push_str(void *pv_vm, char *str) {
 
 uint16_t nb_read_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes) {
     t_VM *vm = pv_vm;
-    if(vm->psp == 0) {
-        return 0;
-    }
     uint16_t addr = vm->variables[var];
     if(addr == 0) {
         return 0;
@@ -122,9 +119,6 @@ uint16_t nb_read_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes) {
 
 uint16_t nb_write_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes) {
     t_VM *vm = pv_vm;
-    if(vm->psp >= cfg_STACK_SIZE - 1) {
-        return 0;
-    }
     uint16_t addr = vm->variables[var];
     if(addr == 0) {
         return 0;

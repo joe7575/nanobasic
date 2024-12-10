@@ -41,34 +41,36 @@ void nb_mem_init(t_VM *p_vm) {
 }
 
 uint16_t nb_mem_alloc(t_VM *p_vm, uint16_t bytes) {
-    uint16_t num_blocks = NUM_BLOCKS(bytes);
-    uint16_t num_words  = NUM_WORDS(bytes);
-    uint16_t start = 0;
-    uint16_t count = 0;
-    uint16_t blocked = 0;
+    if(bytes <= cfg_MAX_MEM_BLOCK_SIZE) {
+        uint16_t num_blocks = NUM_BLOCKS(bytes);
+        uint16_t num_words  = NUM_WORDS(bytes);
+        uint16_t start = 0;
+        uint16_t count = 0;
+        uint16_t blocked = 0;
 
-    for(int i = p_vm->str_start_addr; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
-        if(blocked > 0) {
-            blocked--;
-            continue;
-        }
-        if(p_vm->heap[i] == k_MEM_FREE_TAG) {
-            if(count == 0) {
-                start = i;
-                count = 1;
-                p_vm->str_start_addr = i;
+        for(int i = p_vm->str_start_addr; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
+            if(blocked > 0) {
+                blocked--;
+                continue;
+            }
+            if(p_vm->heap[i] == k_MEM_FREE_TAG) {
+                if(count == 0) {
+                    start = i;
+                    count = 1;
+                    p_vm->str_start_addr = i;
+                } else {
+                    count++;
+                }
+                if(count == num_blocks) {
+                    p_vm->heap[start] = num_blocks;
+                    p_vm->heap[start + 1] = num_words;
+                    return 0x8000 + start + HEADER_SIZE;
+                }
             } else {
-                count++;
+                blocked = p_vm->heap[i] - 1;
+                start = 0;
+                count = 0;
             }
-            if(count == num_blocks) {
-                p_vm->heap[start] = num_blocks;
-                p_vm->heap[start + 1] = num_words;
-                return 0x8000 + start + HEADER_SIZE;
-            }
-        } else {
-            blocked = p_vm->heap[i] - 1;
-            start = 0;
-            count = 0;
         }
     }
     return 0;
@@ -90,7 +92,7 @@ void nb_mem_free(t_VM *p_vm, uint16_t addr) {
 }
 
 uint16_t nb_mem_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes) {
-    if(addr > 0x7FFF) {
+    if(addr > 0x7FFF && bytes <= cfg_MAX_MEM_BLOCK_SIZE) {
         addr = (addr & 0x7FFF) - HEADER_SIZE;
         uint8_t num_blocks = p_vm->heap[addr];
         uint16_t new_num_blocks = NUM_BLOCKS(bytes);
