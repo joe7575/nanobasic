@@ -111,7 +111,9 @@ static uint8_t next_token(void);
 static uint8_t lookahead(void);
 static uint8_t next(void);
 static void match(uint8_t expected);
+#ifndef cfg_LINE_NUMBERS
 static void label(void);
+#endif
 static void compile_line(void);
 static void compile_stmts(void);
 static void compile_stmt(void);
@@ -419,6 +421,7 @@ static void match(uint8_t expected) {
     }
 }
 
+#ifndef cfg_LINE_NUMBERS
 static void label(void) {
   uint8_t tok = lookahead();
   if(tok == ID) { // Token recognized as variable?
@@ -433,6 +436,7 @@ static void label(void) {
   }
   match(LABEL);
 }
+#endif
 
 static void compile_line(void) {
     uint8_t tok;
@@ -442,7 +446,7 @@ static void compile_line(void) {
     if(tok == NUM) {
         match(NUM);
         Linenum = Value;
-        sym_add(a_Buff, Pc, LABEL);
+        SymIdx = sym_add(a_Buff, Pc, LABEL);
     }
 #else
     tok = lookahead();
@@ -605,7 +609,8 @@ static void compile_goto(void) {
     uint16_t addr;
 #ifdef cfg_LINE_NUMBERS
     match(NUM);
-    addr = sym_get(a_Buff);
+    SymIdx = sym_add(a_Buff, 0, LABEL);
+    addr = 0;
 #else
     label();
     addr = a_Symbol[SymIdx].value;
@@ -806,11 +811,11 @@ static void compile_set4(void) {
 
 static void compile_copy(void) {
     match('(');
-    compile_expression(e_ARR);
+    compile_expression(e_STR);
     match(',');
     compile_expression(e_NUM);
     match(',');
-    compile_expression(e_ARR);
+    compile_expression(e_STR);
     match(',');
     compile_expression(e_NUM);
     match(',');
@@ -822,7 +827,7 @@ static void compile_copy(void) {
 static void compile_set(uint8_t instr) {
     uint8_t idx;
     match('(');
-    match(ARR);
+    match(SID);
     idx = SymIdx;
     match(',');
     compile_expression(e_NUM);
@@ -837,7 +842,7 @@ static void compile_get(uint8_t tok, uint8_t instr) {
     uint8_t idx;
     match(tok);
     match('(');
-    match(ARR);
+    match(SID);
     idx = SymIdx;
     match(',');
     compile_expression(e_NUM);
@@ -936,6 +941,9 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
     // Search for existing symbol
     for(uint16_t i = 0; i < cfg_MAX_NUM_SYM; i++) {
         if(strcmp(a_Symbol[i].name, sym) == 0) {
+            if(a_Symbol[i].value == 0 && a_Symbol[i].type == LABEL && val > 0) {
+                a_Symbol[i].value = val;
+            }
             return i;
         }
         if(a_Symbol[i].name[0] == '\0') {

@@ -24,7 +24,7 @@ print "Hallo", A$
 DIM buf1(4)
 let buf1(0) = 987654321
 print buf1(0), "= 987654321"
-cmd(12345)
+let num = rnd(100)
 
 return
 
@@ -36,6 +36,6 @@ next
 return
 
 on_can:
-let p1 = stack()
+let p1 = param()
 print "on_can", p1
 return

@@ -35,16 +35,16 @@ print "Hallo", A$
 let B$ = A$ + " lasse dich gruessen!"
 print B$
 print left$(B$, 10)
-DIM buf1(4)
-set1(buf1, 0, 1)
-set1(buf1, 1, 2)
-set2(buf1, 2, 540)
-set4(buf1, 4, 12345)
-set4(buf1, 12, 987654321)
+let b$ = string$(16, 0)
+set1(b$, 0, 1)
+set1(b$, 1, 2)
+set2(b$, 2, 540)
+set4(b$, 4, 12345)
+set4(b$, 12, 987654321)
 
-DIM buf2(4)
-copy(buf2, 12, buf1, 12, 4)
-print get4(buf2, 12), "= 987654321"
+let b2$ = string$(16, 0)
+copy(b2$, 12, b$, 12, 4)
+print get4(b2$, 12), "= 987654321"
 
 return
 
@@ -57,7 +57,7 @@ print
 return
 
 on_can:
-let p1 = stack()
+let p1 = param()
 rem print "on_can", p1
 return
 
