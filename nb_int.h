@@ -107,6 +107,7 @@ enum {
     k_VAL_TO_HEX_N1,      // 42 (hex$)
     k_VAL_TO_CHR_N1,      // 43 (chr$)
     k_INSTR_N1,           // 44 (instr)
+    k_ALLOC_STR_N1,       // 45 (alloc string)
 #endif
 };
 

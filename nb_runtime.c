@@ -50,16 +50,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 ***************************************************************************************************/
 void *nb_create(uint8_t* p_programm, uint16_t code_size, uint16_t max_code_size, uint8_t num_vars) {
     t_VM *vm = malloc(sizeof(t_VM));
-    memset(vm, 0, sizeof(t_VM));
-    nb_mem_init(vm);
-    srand(time(NULL));
-    assert(p_programm[0] == k_TAG);
-    assert(p_programm[1] == k_VERSION);
-    vm->pc = 2;
-    vm->p_programm = p_programm;
-    vm->code_size = code_size;
-    vm->max_code_size = max_code_size;
-    vm->num_vars = num_vars;
+    if(vm != NULL) {
+        memset(vm, 0, sizeof(t_VM));
+        nb_mem_init(vm);
+        //srand(time(NULL));
+        assert(p_programm[0] == k_TAG);
+        assert(p_programm[1] == k_VERSION);
+        vm->pc = 2;
+        vm->p_programm = p_programm;
+        vm->code_size = code_size;
+        vm->max_code_size = max_code_size;
+        vm->num_vars = num_vars;
+    }
     return vm;
 }
 
@@ -664,6 +666,21 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             } else {
                 DPUSH(str - STR(tmp1) + val + 1);
             }
+            vm->pc += 1;
+            break;
+        case k_ALLOC_STR_N1:
+            tmp2 = DPOP();  // fill char
+            tmp1 = DPOP();  // string length
+            addr = nb_mem_alloc(vm, tmp1 + 1);
+            if(addr == 0) {
+                nb_print("Error: Out of memory\n");
+                return NB_ERROR;
+            }
+            for(uint16_t i = 0; i < tmp1; i++) {
+                vm->heap[(addr & 0x7fff) + i] = tmp2;
+            }
+            vm->heap[(addr & 0x7fff) + tmp1] = 0;
+            DPUSH(addr);
             vm->pc += 1;
             break;
 #endif

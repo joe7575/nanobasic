@@ -50,7 +50,7 @@ enum {
     SPC, PARAM, COPY, CONST,    // 172 - 175
     ERASE, ELSE, HEXS, CHRS,    // 176 - 179
     INSTR, ON, TRON, TROFF,     // 180 - 183
-    FREE, RND, PARAMS,          // 184 - 186
+    FREE, RND, PARAMS, STRINGS  // 184 - 187
 };
 
 // Expression result types
@@ -214,6 +214,7 @@ void nb_init(void) {
     sym_add("free", 0, FREE);
     sym_add("rnd", 0, RND);
     sym_add("param$", 0, PARAMS);
+    sym_add("string$", 0, STRINGS);
 }
 
 uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type) {
@@ -1174,6 +1175,7 @@ static type_t compile_term(void) {
 
 static type_t compile_factor(void) {
     type_t type = 0;
+    uint8_t val;
     uint8_t tok = lookahead();
     switch(tok) {
     case '(':
@@ -1223,7 +1225,7 @@ static type_t compile_factor(void) {
         type = e_NUM;
         break;
     case ARR: 
-        uint8_t val = a_Symbol[SymIdx].value;
+        val = a_Symbol[SymIdx].value;
         match(ARR);
         tok = lookahead();
         if(tok == '(') { // like A(0)
@@ -1384,6 +1386,16 @@ static type_t compile_factor(void) {
         match(XFUNC);
         type = compile_xfunc();
         p_Code[Pc++] = k_PARAM_N1;
+        break;
+    case STRINGS: // string$ function
+        match(STRINGS);
+        match('(');
+        compile_expression(e_NUM);
+        match(',');
+        compile_expression(e_NUM);
+        match(')');
+        p_Code[Pc++] = k_ALLOC_STR_N1;
+        type = e_STR;
         break;
     default:
         error("syntax error", a_Buff);

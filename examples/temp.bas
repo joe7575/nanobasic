@@ -1,6 +1,8 @@
 let count = 10
 let sum = 0
 dim A(10)
+let C$ = string$(10, 62)
+print C$
 for i = 1 to count
 let sum = sum + 1
 let A(i) = sum

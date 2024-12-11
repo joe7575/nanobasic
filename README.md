@@ -26,7 +26,7 @@ Most of the common BASIC keywords are supported:
     TRON, TROFF
     FREE
     AND, NOT, OR, RND, MOD, LEN, VAL, SPC
-    LEN, CHR$, MID$, LEFT$, RIGHT$, STR$, HEX$
+    LEN, CHR$, MID$, LEFT$, RIGHT$, STR$, HEX$, STRING$
 ```
 
 Supported data types are:
