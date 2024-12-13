@@ -1,7 +1,7 @@
 NanoBasic
 =========
 
-A small BASIC compiler with virtual machine implemented.
+A small BASIC compiler with virtual machine.
 This software is written from scratch in C.
 
 Most of the common BASIC keywords are supported:

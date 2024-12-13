@@ -29,6 +29,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define cfg_DATASTACK_SIZE      (16)  // value for data stack (for expression evaluation and FOR loop variables)
 #define cfg_STACK_SIZE          (8)   // value for call stack and parameter stack
 #define cfg_NUM_VARS            (256) // in the range 8..256
+#define cfg_MAX_CODE_SIZE       (1024 * 16) // in 1k steps
 #define cfg_MEM_HEAP_SIZE       (1024 * 16) // in 1k steps
 #define cfg_MAX_MEM_BLOCK_SIZE  (512) // in bytes
 #define cfg_MAX_NUM_XFUNC       (16)  // number of external function definitions

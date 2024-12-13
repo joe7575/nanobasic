@@ -92,7 +92,6 @@ static uint8_t NumXFuncs = 0;
 static sym_t a_Symbol[cfg_MAX_NUM_SYM] = {0};
 static uint8_t CurrVarIdx = 0;
 static uint8_t *p_Code;
-static uint16_t MaxCodeSize = 0;
 static uint16_t Pc = 0;
 static uint16_t Linenum = 0;
 static uint16_t ErrCount = 0;
@@ -257,15 +256,23 @@ uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *typ
     return NumXFuncs++;
 }
 
-uint16_t nb_compile(void *fp, uint8_t *p_code, uint16_t *p_code_size, uint8_t *p_num_vars) {
-    p_Code = p_code;
+void *nb_create(void) {
+    t_VM *vm = malloc(sizeof(t_VM));
+    if(vm != NULL) {
+        memset(vm, 0, sizeof(t_VM));
+        nb_mem_init(vm);
+        //srand(time(NULL));
+    }
+    return vm;
+}
+
+uint16_t nb_compile(void *pv_vm, void *fp) {
+    t_VM *vm = pv_vm;
+    p_Code = vm->code;
     StartOfVars = CurrVarIdx;
     CurrVarIdx = 0;
     Pc = 0;
     FilePtr = fp;
-    p_Code[Pc++] = k_TAG;
-    p_Code[Pc++] = k_VERSION;
-    MaxCodeSize = *p_code_size;
     Linenum = 0;
     ErrCount = 0;
     TraceOn = false;
@@ -277,20 +284,21 @@ uint16_t nb_compile(void *fp, uint8_t *p_code, uint16_t *p_code_size, uint8_t *p
     }
 
     if(ErrCount > 0) {
-        *p_code_size = 0;
+        vm->code_size = 0;
         return ErrCount;
     }
 
     resolve_forward_declarations();
 
-    *p_code_size = Pc;
-    *p_num_vars = get_num_vars();
+    vm->code_size = Pc;
+    vm->num_vars = get_num_vars();
     return ErrCount;
 }
 
-void nb_dump_code(uint8_t *code, uint16_t size) {
-    for(uint16_t i = 0; i < size; i++) {
-        nb_print("%02X ", code[i]);
+void nb_dump_code(void *pv_vm) {
+    t_VM *vm = pv_vm;
+    for(uint16_t i = 0; i < vm->code_size; i++) {
+        nb_print("%02X ", vm->code[i]);
         if((i % 32) == 31) {
             nb_print("\n");
         } 
@@ -298,7 +306,8 @@ void nb_dump_code(uint8_t *code, uint16_t size) {
     nb_print("\n");
 }
 
-void nb_output_symbol_table(void) {
+void nb_output_symbol_table(void *pv_vm) {
+    (void)pv_vm;
     uint8_t idx = 0;
 
     nb_print("#### Symbol table ####\n");
@@ -321,7 +330,8 @@ void nb_output_symbol_table(void) {
 }
 
 // return 0 if not found
-uint16_t nb_get_label_address(char *name) {
+uint16_t nb_get_label_address(void *pv_vm, char *name) {
+    (void)pv_vm;
     char str[MAX_SYM_LEN];
     // Convert to lower case
     for(uint16_t i = 0; i < MAX_SYM_LEN; i++) {
@@ -341,7 +351,8 @@ uint16_t nb_get_label_address(char *name) {
 }   
 
 // return 255 if not found
-uint16_t jbi_get_var_num(char *name) {
+uint16_t jbi_get_var_num(void *pv_vm, char *name) {
+    (void)pv_vm;
     char str[MAX_SYM_LEN];
     // Convert to lower case
     for(uint16_t i = 0; i < MAX_SYM_LEN; i++) {
@@ -504,7 +515,7 @@ static void compile_stmts(void) {
             match(':');
             tok = lookahead();
         }
-        if(Pc >= MaxCodeSize - MAX_CODE_PER_LINE) {
+        if(Pc >= cfg_MAX_CODE_SIZE - MAX_CODE_PER_LINE) {
             error("code size exceeded", NULL);
             break;
         }

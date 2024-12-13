@@ -61,9 +61,6 @@ void nb_print(const char * format, ...) {
 }
 
 int main(int argc, char* argv[]) {
-    uint16_t code_size;
-    uint8_t *p_code;
-    uint8_t num_vars;
     uint8_t ext_buf, efunc4;
     uint16_t res = NB_BUSY;
     uint32_t cycles = 0;
@@ -81,7 +78,7 @@ int main(int argc, char* argv[]) {
     assert(nb_define_external_function("efunc1", 2, (uint8_t[]){NB_NUM, NB_STR}, NB_NONE) == 0);
     assert(nb_define_external_function("efunc2", 0, (uint8_t[]){}, NB_NUM) == 1);
     assert(nb_define_external_function("efunc3", 0, (uint8_t[]){}, NB_STR) == 2);
-
+    void *instance = nb_create();
     //FILE *fp = fopen("../examples/basicV2.bas", "r");
     //FILE *fp = fopen("../examples/lineno.bas", "r");
     //FILE *fp = fopen("../examples/test.bas", "r");
@@ -93,22 +90,19 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    p_code = malloc(MAX_CODE_SIZE);
-    code_size = MAX_CODE_SIZE;
-    errors = nb_compile(fp, p_code, &code_size, &num_vars);
+    errors = nb_compile(instance, fp);
     fclose(fp);
 
     if(errors >0) {
         return 1;
     }
 
-    nb_output_symbol_table();
-    efunc4 = nb_get_label_address("efunc4");
-    ext_buf = jbi_get_var_num("extbuf");
+    nb_output_symbol_table(instance);
+    efunc4 = nb_get_label_address(instance, "efunc4");
+    ext_buf = jbi_get_var_num(instance, "extbuf");
 
     nb_print("\nNanoBasic Interpreter V1.0\n");
-    void *instance = nb_create(p_code, code_size, MAX_CODE_SIZE, num_vars);
-    nb_dump_code(p_code, code_size);
+    nb_dump_code(instance);
 
     while(res >= NB_BUSY) {
         // A simple for loop "for i = 1 to 100: print i: next i" 

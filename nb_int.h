@@ -19,9 +19,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 */
 
-#define k_TAG           0xBC
-#define k_VERSION       0x01
-
 #define k_MEM_BLOCK_SIZE    (8)     // Must be a multiple of 4 (real size is MIN_BLOCK_SIZE - 1)
 #define k_MEM_FREE_TAG      (0)     // Also used for number of blocks
 
@@ -114,10 +111,8 @@ enum {
 };
 
 typedef struct {
-    uint8_t  *p_code;       // pointer to the compiled byte code
-    uint16_t max_code_size; // maximum size of the compiled byte code
-    uint16_t code_size;     // size of the compiled byte code
-    uint16_t num_vars;      // number of used variables
+    uint16_t code_size; // size of the compiled byte code
+    uint16_t num_vars;  // number of used variables
     uint16_t pc;   // Programm counter
     uint8_t  dsp;  // Data stack pointer
     uint8_t  csp;  // Call stack pointer
@@ -126,6 +121,7 @@ typedef struct {
     uint32_t callstack[cfg_STACK_SIZE];
     uint32_t paramstack[cfg_STACK_SIZE];
     uint32_t variables[cfg_NUM_VARS];
+    uint8_t  code[cfg_MAX_CODE_SIZE];
     uint16_t mem_start_addr;
     uint8_t  heap[cfg_MEM_HEAP_SIZE];
 } t_VM;
