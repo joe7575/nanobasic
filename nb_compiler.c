@@ -51,7 +51,8 @@ enum {
     ERASE, ELSE, HEXS, CHRS,    // 176 - 179
     INSTR, ON, TRON, TROFF,     // 180 - 183
     FREE, RND, PARAMS, STRINGS, // 184 - 187
-    WHILE, EXIT,                // 188 - 191
+    WHILE, EXIT, DATA, READ,    // 188 - 191
+    RESTORE,                    // 192
 };
 
 // Expression result types
@@ -105,6 +106,7 @@ static uint32_t Value;
 static uint8_t NextTok;
 static uint8_t NestedLoopIdx = 0;
 static bool TraceOn = false;
+static bool FirstDataDeclaration = true;
 static jmp_buf  JmpBuf;
 
 static bool get_line(void);
@@ -145,6 +147,9 @@ static void compile_get(uint8_t tok, uint8_t instr);
 static void compile_erase(void);
 static void compile_on(void);
 static uint8_t list_of_numbers(void);
+static void compile_data(void);
+static void compile_read(void);
+static void compile_restore(void);
 #ifdef cfg_BASIC_V2
 static void compile_const(void);
 static void compile_while(void);
@@ -196,6 +201,9 @@ void nb_init(void) {
     sym_add("not", 0, NOT);
     sym_add("mod", 0, MOD);
     sym_add("break", 0, BREAK);
+    sym_add("data", 0, DATA);
+    sym_add("read", 0, READ);
+    sym_add("restore", 0, RESTORE);
 #ifdef cfg_BYTE_ACCESS
     sym_add("set1", 0, SET1);
     sym_add("set2", 0, SET2);
@@ -261,6 +269,7 @@ uint16_t nb_compile(void *fp, uint8_t *p_code, uint16_t *p_code_size, uint8_t *p
     Linenum = 0;
     ErrCount = 0;
     TraceOn = false;
+    FirstDataDeclaration = true;
 
     setjmp(JmpBuf);
     while(get_line()) {
@@ -504,6 +513,9 @@ static void compile_stmts(void) {
 
 static void compile_stmt(void) {
     uint8_t tok = next();
+    if(FirstDataDeclaration == false && tok != DATA) {
+        error("data statement expected", NULL);
+    }
     switch(tok) {
     case FOR: compile_for(); break;
     case IF: compile_if(); break;
@@ -517,6 +529,9 @@ static void compile_stmt(void) {
     case GOSUB: compile_gosub(); break;
     case RETURN: compile_return(); break;
     case PRINT: compile_print(); break;
+    case READ: compile_read(); break;
+    case DATA: compile_data(); break;
+    case RESTORE: compile_restore(); break;
 #ifdef cfg_BASIC_V2
     case EXIT: compile_exit(); break;
     case CONST: compile_const(); break;
@@ -880,6 +895,69 @@ static void compile_string(void) {
     Pc += len - 1;
 }
 
+static void compile_data(void) {
+    uint8_t tok;
+    if(FirstDataDeclaration) {
+        FirstDataDeclaration = false;
+        uint16_t idx = sym_add("@data", CurrVarIdx, ID);
+        a_Symbol[idx].value = Pc;
+    }
+    
+    while(1) {
+        tok = next();
+        if(tok == NUM) {
+            ACS32(p_Code[Pc]) = Value;
+            Pc += 4;
+        } else if(tok == STR) {
+            uint16_t len = strlen(a_Buff);
+            a_Buff[len - 1] = '\0';
+            p_Code[Pc++] = len - 1; // without quotes but with 0
+            strcpy((char*)&p_Code[Pc], a_Buff + 1);
+            Pc += len - 1;
+        } else {
+            error("syntax error", a_Buff);
+        }
+        tok = lookahead();
+        if(tok == ',') {
+            match(',');
+        } else {
+            break;
+        }
+    }
+}
+
+static void compile_read(void) {
+    uint8_t tok;
+    uint16_t idx1, idx2;
+
+    while(1) {
+        match(ID);
+        idx1 = SymIdx;
+        idx2 = sym_add("@data", CurrVarIdx, ID);
+        p_Code[Pc++] = k_READ_NUM_N4;
+        p_Code[Pc++] = a_Symbol[idx2].value;
+        forward_declaration(idx2, Pc);
+        Pc += 2;
+        p_Code[Pc++] = k_POP_VAR_N2;
+        p_Code[Pc++] = a_Symbol[idx1].value;
+        tok = lookahead();
+        if(tok == ',') {
+            match(',');
+        } else {
+            break;
+        }
+    }
+}
+
+static void compile_restore(void) {
+    uint16_t idx = sym_add("@data", CurrVarIdx, ID);
+    match('(');
+    compile_expression(e_NUM);
+    match(')');
+    p_Code[Pc++] = k_RESTORE_N2;
+    p_Code[Pc++] = a_Symbol[idx].value;
+}
+
 #ifdef cfg_BASIC_V2
 static void compile_exit(void) {
     p_Code[Pc++] = k_END;
@@ -1048,6 +1126,13 @@ static void compile_free(void) {
 /**************************************************************************************************
  * Symbol table and other helper functions
  *************************************************************************************************/
+
+/*
+** Add symbol to symbol table
+** id = symbol name
+** val = value (in case of variable the index to vm->variables)
+** type = type of symbol (ID, SID, ARR, LABEL)
+*/
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
     uint16_t start = 0;
     char sym[MAX_SYM_LEN];
@@ -1137,6 +1222,8 @@ static uint8_t get_num_vars(void) {
     return idx;
 }
 
+// idx = index of symbol (SmyIdx)
+// pos = position in code array
 static void forward_declaration(uint16_t idx, uint16_t pos) {
     if(NumFwDecls < cfg_MAX_FW_DECL) {
         a_ForwardDeclaration[NumFwDecls].idx = idx;
@@ -1518,8 +1605,6 @@ static type_t compile_factor(void) {
         match(')');
         p_Code[Pc++] = k_RND_N1;
         type = e_NUM;
-        break;
-    case ELSE:
         break;
     case XFUNC:
         match(XFUNC);

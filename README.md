@@ -19,6 +19,9 @@ Most of the common BASIC keywords are supported:
     LET string-variable$ = string-expression$
     DIM array-variable "(" numeric_expression ")"
     ERASE ( array-variable | string-variable$ )
+    READ variable-list
+    DATA constant-list                                      ; numbers only, only at the end of the program
+    RESTORE "(" number ")"                                  ; number is offset (0..n), not line number
     RETURN
     END
     BREAK
