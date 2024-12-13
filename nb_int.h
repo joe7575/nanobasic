@@ -112,7 +112,7 @@ enum {
 };
 
 typedef struct {
-    uint8_t  *p_programm;   // pointer to the compiled byte code
+    uint8_t  *p_code;       // pointer to the compiled byte code
     uint16_t max_code_size; // maximum size of the compiled byte code
     uint16_t code_size;     // size of the compiled byte code
     uint16_t num_vars;      // number of used variables
@@ -124,7 +124,7 @@ typedef struct {
     uint32_t callstack[cfg_STACK_SIZE];
     uint32_t paramstack[cfg_STACK_SIZE];
     uint32_t variables[cfg_NUM_VARS];
-    uint16_t str_start_addr;
+    uint16_t mem_start_addr;
     uint8_t  heap[cfg_MEM_HEAP_SIZE];
 } t_VM;
 

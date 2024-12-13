@@ -15,11 +15,10 @@ Most of the common BASIC keywords are supported:
     GOSUB line-number
     ON numeric_expression GOSUB line-number-list
     ON numeric_expression GOTO line-number-list
-    CONST variable = number
     LET variable = expression
     LET string-variable$ = string-expression$
     DIM array-variable "(" numeric_expression ")"
-    ERASE array-variable
+    ERASE ( array-variable | string-variable$ )
     RETURN
     END
     BREAK
@@ -27,6 +26,27 @@ Most of the common BASIC keywords are supported:
     FREE
     AND, NOT, OR, RND, MOD, LEN, VAL, SPC
     LEN, CHR$, MID$, LEFT$, RIGHT$, STR$, HEX$, STRING$
+```
+
+Basic V2 features (optional):
+
+```bnf
+    CONST variable = number
+
+    IF relation-expression THEN 
+        statements...
+    [ ELSE
+        statements... ]
+    END
+
+    WHILE relation-expression
+        statements...
+    END
+
+    variable = expression                                  ; without LET
+    string-variable$ = string-expression$                  ; without LET
+
+    EXIT                                                   ; instead of END
 ```
 
 Supported data types are:

@@ -58,7 +58,7 @@ uint16_t nb_compile(void *fp, uint8_t *p_code, uint16_t *p_code_size, uint8_t *p
 /*
 ** Interpreter
 */
-void *nb_create(uint8_t* p_programm, uint16_t code_size, uint16_t max_code_size, uint8_t num_vars);
+void *nb_create(uint8_t* p_code, uint16_t code_size, uint16_t max_code_size, uint8_t num_vars);
 uint16_t nb_run(void *pv_vm, uint16_t cycles);
 void nb_destroy(void * pv_vm);
 

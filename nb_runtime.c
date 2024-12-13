@@ -39,7 +39,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define PPUSH(x) vm->paramstack[(uint8_t)(vm->psp++) % cfg_STACK_SIZE] = x
 #define PPOP() vm->paramstack[(uint8_t)(--vm->psp) % cfg_STACK_SIZE]
 
-#define STR(x) (x >= 0x8000 ? (char*)&vm->heap[x & 0x7FFF] : (char*)&vm->p_programm[x])
+#define STR(x) (x >= 0x8000 ? (char*)&vm->heap[x & 0x7FFF] : (char*)&vm->p_code[x])
 
 /***************************************************************************************************
 **    static function-prototypes
@@ -48,16 +48,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 /***************************************************************************************************
 **    global functions
 ***************************************************************************************************/
-void *nb_create(uint8_t* p_programm, uint16_t code_size, uint16_t max_code_size, uint8_t num_vars) {
+void *nb_create(uint8_t* p_code, uint16_t code_size, uint16_t max_code_size, uint8_t num_vars) {
     t_VM *vm = malloc(sizeof(t_VM));
     if(vm != NULL) {
         memset(vm, 0, sizeof(t_VM));
         nb_mem_init(vm);
         //srand(time(NULL));
-        assert(p_programm[0] == k_TAG);
-        assert(p_programm[1] == k_VERSION);
+        assert(p_code[0] == k_TAG);
+        assert(p_code[1] == k_VERSION);
         vm->pc = 2;
-        vm->p_programm = p_programm;
+        vm->p_code = p_code;
         vm->code_size = code_size;
         vm->max_code_size = max_code_size;
         vm->num_vars = num_vars;
@@ -157,7 +157,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
 
     for(uint16_t i = 0; i < cycles; i++)
     {
-        switch (vm->p_programm[vm->pc])
+        switch (vm->p_code[vm->pc])
         {
         case k_END:
             return NB_END;
@@ -190,35 +190,35 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 1;
             break;
         case k_PRINT_LINENO_N3:
-            tmp1 = ACS16(vm->p_programm[vm->pc + 1]);
+            tmp1 = ACS16(vm->p_code[vm->pc + 1]);
             nb_print("[%u] ", tmp1);
             vm->pc += 3;
             break;
         case k_PUSH_STR_Nx:
-            tmp1 = vm->p_programm[vm->pc + 1]; // string length
+            tmp1 = vm->p_code[vm->pc + 1]; // string length
             DPUSH(vm->pc + 2);  // push string address
             vm->pc += tmp1 + 2;
             break;
         case k_PUSH_NUM_N5:
-            DPUSH(ACS32(vm->p_programm[vm->pc + 1]));
+            DPUSH(ACS32(vm->p_code[vm->pc + 1]));
             vm->pc += 5;
             break;
         case k_PUSH_NUM_N2:
-            DPUSH(vm->p_programm[vm->pc + 1]);
+            DPUSH(vm->p_code[vm->pc + 1]);
             vm->pc += 2;
             break;
         case k_PUSH_VAR_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             DPUSH(vm->variables[var]);
             vm->pc += 2;
             break;
         case k_POP_VAR_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             vm->variables[var] = DPOP();
             vm->pc += 2;
             break;
         case k_POP_STR_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             if(vm->variables[var] > 0x7FFF) {
                 nb_mem_free(vm, vm->variables[var]);
             }
@@ -226,7 +226,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 2;
             break;
         case k_DIM_ARR_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             size = DPOP();
             addr = nb_mem_alloc(vm, (size + 1) * sizeof(uint32_t));
             if(addr == 0) {
@@ -320,11 +320,11 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 1;
             break;
         case k_GOTO_N3:
-            vm->pc = ACS16(vm->p_programm[vm->pc + 1]);
+            vm->pc = ACS16(vm->p_code[vm->pc + 1]);
             break;
         case k_GOSUB_N3:
             CPUSH(vm->pc + 3);
-            vm->pc = ACS16(vm->p_programm[vm->pc + 1]);
+            vm->pc = ACS16(vm->p_code[vm->pc + 1]);
             break;
         case k_RETURN_N1:
             vm->pc = (uint16_t)CPOP();
@@ -332,8 +332,8 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
         case k_NEXT_N4:
             // ID = ID + stack[-1]
             // IF ID <= stack[-2] GOTO start
-            tmp1 = ACS16(vm->p_programm[vm->pc + 1]);
-            var = vm->p_programm[vm->pc + 3];
+            tmp1 = ACS16(vm->p_code[vm->pc + 1]);
+            var = vm->p_code[vm->pc + 3];
             vm->variables[var] = vm->variables[var] + DTOP();
             if(vm->variables[var] <= DPEEK(-2)) {
               vm->pc = tmp1;
@@ -345,7 +345,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             break;
         case k_IF_N3:
             if(DPOP() == 0) {
-              vm->pc = ACS16(vm->p_programm[vm->pc + 1]);
+              vm->pc = ACS16(vm->p_code[vm->pc + 1]);
             } else {
               vm->pc += 3;
             }
@@ -353,7 +353,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
 #ifdef cfg_ON_COMMANDS
         case k_ON_GOTO_N2:
             idx = DPOP();
-            val = vm->p_programm[vm->pc + 1];
+            val = vm->p_code[vm->pc + 1];
             vm->pc += 2;
             if(idx == 0 || idx > val) {
                 vm->pc += val * 3;
@@ -363,7 +363,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             break;
         case k_ON_GOSUB_N2:
             idx = DPOP();
-            val = vm->p_programm[vm->pc + 1];
+            val = vm->p_code[vm->pc + 1];
             vm->pc += 2;
             if(idx == 0 || idx > val) {
                 vm->pc += val * 3;  // skip all addresses
@@ -374,7 +374,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             break;
 #endif
         case k_SET_ARR_ELEM_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             tmp2 = DPOP() * sizeof(uint32_t);
@@ -386,7 +386,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 2;
             break;
         case k_GET_ARR_ELEM_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP() * sizeof(uint32_t);
             if(tmp1 >= nb_mem_get_blocksize(vm, addr)) {
@@ -398,7 +398,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             break;
 #ifdef cfg_BYTE_ACCESS            
         case k_SET_ARR_1BYTE_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             tmp2 = DPOP();
@@ -410,7 +410,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 2;
             break;
         case k_GET_ARR_1BYTE_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             if(tmp1 >= nb_mem_get_blocksize(vm, addr)) {
@@ -421,7 +421,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 2;
             break;
         case k_SET_ARR_2BYTE_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             tmp2 = DPOP();
@@ -433,7 +433,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 2;
             break;
         case k_GET_ARR_2BYTE_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             if(tmp1 + 1 >= nb_mem_get_blocksize(vm, addr)) {
@@ -444,7 +444,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 2;
             break;
         case k_SET_ARR_4BYTE_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             tmp2 = DPOP();
@@ -456,7 +456,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 2;
             break;
         case k_GET_ARR_4BYTE_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
             tmp1 = DPOP();
             if(tmp1 + 3 >= nb_mem_get_blocksize(vm, addr)) {
@@ -494,7 +494,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 1;
             break;
         case k_XFUNC_N2:
-            val = vm->p_programm[vm->pc + 1];
+            val = vm->p_code[vm->pc + 1];
             vm->pc += 2;
             return NB_XFUNC + val;
         case k_PUSH_PARAM_N1:
@@ -502,7 +502,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             vm->pc += 1;
             break;
         case k_ERASE_ARR_N2:
-            var = vm->p_programm[vm->pc + 1];
+            var = vm->p_code[vm->pc + 1];
             addr = vm->variables[var];
             if(addr > 0x7FFF) {
                 nb_mem_free(vm, addr);
@@ -685,7 +685,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
             break;
 #endif
         default:
-            nb_print("Error: unknown opcode '%u'\n", vm->p_programm[vm->pc]);
+            nb_print("Error: unknown opcode '%u'\n", vm->p_code[vm->pc]);
             return NB_ERROR;
         }
     }

@@ -37,7 +37,7 @@ void nb_mem_init(t_VM *p_vm) {
     for(int i = 0; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
         p_vm->heap[i] = k_MEM_FREE_TAG;
     }
-    p_vm->str_start_addr = 0;
+    p_vm->mem_start_addr = 0;
 }
 
 uint16_t nb_mem_alloc(t_VM *p_vm, uint16_t bytes) {
@@ -48,7 +48,7 @@ uint16_t nb_mem_alloc(t_VM *p_vm, uint16_t bytes) {
         uint16_t count = 0;
         uint16_t blocked = 0;
 
-        for(int i = p_vm->str_start_addr; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
+        for(int i = p_vm->mem_start_addr; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
             if(blocked > 0) {
                 blocked--;
                 continue;
@@ -57,7 +57,7 @@ uint16_t nb_mem_alloc(t_VM *p_vm, uint16_t bytes) {
                 if(count == 0) {
                     start = i;
                     count = 1;
-                    p_vm->str_start_addr = i;
+                    p_vm->mem_start_addr = i;
                 } else {
                     count++;
                 }
@@ -85,7 +85,7 @@ void nb_mem_free(t_VM *p_vm, uint16_t addr) {
                 for(uint8_t i = 0; i < size; i += k_MEM_BLOCK_SIZE) {
                     p_vm->heap[addr + i] = k_MEM_FREE_TAG;
                 }
-                p_vm->str_start_addr = MIN(p_vm->str_start_addr, addr);
+                p_vm->mem_start_addr = MIN(p_vm->mem_start_addr, addr);
             }
         }
     }
@@ -129,7 +129,7 @@ uint16_t nb_mem_get_blocksize(t_VM *p_vm, uint16_t addr) {
 
 uint16_t nb_mem_get_free(t_VM *p_vm) {
     uint16_t free = 0;
-    for(int i = p_vm->str_start_addr; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
+    for(int i = p_vm->mem_start_addr; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
         if(p_vm->heap[i] == k_MEM_FREE_TAG) {
             free += k_MEM_BLOCK_SIZE;
         }

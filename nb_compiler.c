@@ -50,7 +50,8 @@ enum {
     SPC, PARAM, COPY, CONST,    // 172 - 175
     ERASE, ELSE, HEXS, CHRS,    // 176 - 179
     INSTR, ON, TRON, TROFF,     // 180 - 183
-    FREE, RND, PARAMS, STRINGS  // 184 - 187
+    FREE, RND, PARAMS, STRINGS, // 184 - 187
+    WHILE, EXIT,                // 188 - 191
 };
 
 // Expression result types
@@ -82,6 +83,7 @@ typedef struct {
     uint16_t pos;
 } fwdecl_t;
 
+static void *FilePtr = NULL;
 static fwdecl_t a_ForwardDeclaration[cfg_MAX_FW_DECL] = {0};
 static uint8_t NumFwDecls = 0;
 static xfunc_t a_XFuncs[cfg_MAX_NUM_XFUNC] = {0};
@@ -95,18 +97,17 @@ static uint16_t Linenum = 0;
 static uint16_t ErrCount = 0;
 static uint16_t SymIdx = 0;
 static uint16_t StartOfVars = 0;
-static uint16_t a_ForLoopStartAddr[cfg_MAX_FOR_LOOPS] = {0};
-static uint8_t  a_ForLoopVariables[cfg_MAX_FOR_LOOPS] = {0};
 static char a_Line[MAX_LINE_LEN];
 static char a_Buff[MAX_LINE_LEN];
 static char *p_pos = NULL;
 static char *p_next = NULL;
 static uint32_t Value;
 static uint8_t NextTok;
-static uint8_t ForLoopIdx = 0;
+static uint8_t NestedLoopIdx = 0;
 static bool TraceOn = false;
 static jmp_buf  JmpBuf;
 
+static bool get_line(void);
 static uint8_t next_token(void);
 static uint8_t lookahead(void);
 static uint8_t next(void);
@@ -118,18 +119,21 @@ static void compile_line(void);
 static void compile_stmts(void);
 static void compile_stmt(void);
 static void compile_for(void);
-static void compile_next(void);
 static void compile_if(void);
 static void compile_goto(void);
 static void compile_gosub(void);
 static void compile_return(void);
-static void compile_var(void);
+static void compile_var(uint8_t tok);
 static void compile_dim(void);
 static void remark(void);
 static void compile_print(void);
 static void debug_print(uint16_t lineno);
 static void compile_string(void);
+#ifdef cfg_BASIC_V2
+static void compile_exit(void);
+#else
 static void compile_end(void);
+#endif
 static type_t compile_xfunc(void);
 static void compile_break(void);
 static void compile_set1(void);
@@ -138,10 +142,13 @@ static void compile_set4(void);
 static void compile_copy(void);
 static void compile_set(uint8_t instr);
 static void compile_get(uint8_t tok, uint8_t instr);
-static void compile_const(void);
 static void compile_erase(void);
 static void compile_on(void);
 static uint8_t list_of_numbers(void);
+#ifdef cfg_BASIC_V2
+static void compile_const(void);
+static void compile_while(void);
+#endif
 static void compile_tron(void);
 static void compile_troff(void);
 static void compile_free(void);
@@ -172,6 +179,12 @@ void nb_init(void) {
     sym_add("next", 0, NEXT);
     sym_add("if", 0, IF);
     sym_add("then", 0, THEN);
+    sym_add("else", 0, ELSE);
+#ifdef cfg_BASIC_V2    
+    sym_add("end", 0, END);
+    sym_add("while", 0, WHILE);
+    sym_add("exit", 0, EXIT);
+#endif
     sym_add("print", 0, PRINT);
     sym_add("goto", 0, GOTO);
     sym_add("gosub", 0, GOSUB);
@@ -190,6 +203,7 @@ void nb_init(void) {
     sym_add("get1", 0, GET1);
     sym_add("get2", 0, GET2);
     sym_add("get4", 0, GET4);
+    sym_add("copy", 0, COPY);
 #endif
 #ifdef cfg_STRING_SUPPORT    
     sym_add("left$", 0, LEFTS);
@@ -199,14 +213,14 @@ void nb_init(void) {
     sym_add("val", 0, VAL);
     sym_add("str$", 0, STRS);
     sym_add("spc", 0, SPC);
-#endif
-    sym_add("param", 0, PARAM);
-    sym_add("copy", 0, COPY);
-    sym_add("const", 0, CONST);
-    sym_add("erase", 0, ERASE);
-    sym_add("else", 0, ELSE);
     sym_add("hex$", 0, HEXS);
     sym_add("chr$", 0, CHRS);
+    sym_add("param$", 0, PARAMS);
+    sym_add("string$", 0, STRINGS);
+#endif
+    sym_add("param", 0, PARAM);
+    sym_add("const", 0, CONST);
+    sym_add("erase", 0, ERASE);
     sym_add("instr", 0, INSTR);
 #ifdef cfg_ON_COMMANDS
     sym_add("on", 0, ON);
@@ -215,8 +229,6 @@ void nb_init(void) {
     sym_add("troff", 0, TROFF);
     sym_add("free", 0, FREE);
     sym_add("rnd", 0, RND);
-    sym_add("param$", 0, PARAMS);
-    sym_add("string$", 0, STRINGS);
 }
 
 uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type) {
@@ -242,6 +254,7 @@ uint16_t nb_compile(void *fp, uint8_t *p_code, uint16_t *p_code_size, uint8_t *p
     StartOfVars = CurrVarIdx;
     CurrVarIdx = 0;
     Pc = 0;
+    FilePtr = fp;
     p_Code[Pc++] = k_TAG;
     p_Code[Pc++] = k_VERSION;
     MaxCodeSize = *p_code_size;
@@ -250,14 +263,7 @@ uint16_t nb_compile(void *fp, uint8_t *p_code, uint16_t *p_code_size, uint8_t *p
     TraceOn = false;
 
     setjmp(JmpBuf);
-    while(nb_get_code_line(fp, a_Line, MAX_LINE_LEN) != NULL) {
-        if(strlen(a_Line) > (MAX_LINE_LEN - 2)) {
-            error("line too long", NULL);
-        }
-#ifndef cfg_LINE_NUMBERS        
-        Linenum++;
-#endif
-        p_pos = p_next = a_Line;
+    while(get_line()) {
         compile_line();
     }
 
@@ -348,6 +354,20 @@ uint16_t jbi_get_var_num(char *name) {
 /*************************************************************************************************
 ** Static functions
 *************************************************************************************************/
+static bool get_line(void) {
+    if(nb_get_code_line(FilePtr, a_Line, MAX_LINE_LEN) != NULL) {
+        if(strlen(a_Line) > (MAX_LINE_LEN - 2)) {
+            error("line too long", NULL);
+        }
+#ifndef cfg_LINE_NUMBERS        
+        Linenum++;
+#endif
+        p_pos = p_next = a_Line;
+        return true;
+    }
+    return false;
+}
+
 static uint8_t next_token(void) {
     if(p_pos == NULL || *p_pos == '\0') {
         return 0; // End of line
@@ -452,9 +472,9 @@ static void compile_line(void) {
     tok = lookahead();
     if(tok == ID || tok == LABEL) {
         uint16_t idx = SymIdx;
-        label();
         tok = lookahead();
         if(tok == ':') {
+            label();
             match(':');
             a_Symbol[idx].value = Pc;
         }
@@ -487,24 +507,31 @@ static void compile_stmt(void) {
     switch(tok) {
     case FOR: compile_for(); break;
     case IF: compile_if(); break;
-    case LET: compile_var(); break;
+    case LET: tok = next(); compile_var(tok); break;
+    case ID: compile_var(tok); break;
+    case SID: compile_var(tok); break;
+    case ARR: compile_var(tok); break;
     case DIM: compile_dim(); break;
     case REM: remark(); break;
     case GOTO: compile_goto(); break;
     case GOSUB: compile_gosub(); break;
     case RETURN: compile_return(); break;
     case PRINT: compile_print(); break;
-    case NEXT: compile_next(); break;
+#ifdef cfg_BASIC_V2
+    case EXIT: compile_exit(); break;
+    case CONST: compile_const(); break;
+#else    
     case END: compile_end(); break;
+#endif
     case XFUNC: compile_xfunc(); break;
     case BREAK: compile_break(); break;
+    case WHILE: compile_while(); break;
 #ifdef cfg_BYTE_ACCESS    
     case SET1: compile_set1(); break;
     case SET2: compile_set2(); break;
     case SET4: compile_set4(); break;
     case COPY: compile_copy(); break;
 #endif
-    case CONST: compile_const(); break;
     case ERASE: compile_erase(); break;
 #ifdef cfg_ON_COMMANDS
     case ON: compile_on(); break;
@@ -516,18 +543,24 @@ static void compile_stmt(void) {
     }
 }
 
-// FOR ID '=' <Expression1> TO <Expression2> [STEP <Expression3>]
-// <Statement>...
-// NEXT [ID]
-//
-// <Expression1>            (set variable ID)
-// <Expression2>            (push value)
-// <Expression3> or 1       (push value)
-// start:
+/* FOR ID '=' <Expression1> TO <Expression2> [STEP <Expression3>]
+**   <Statement>...
+** NEXT [ID]
+**
+** <Expression2>  and step counter are pushed on the data stack
+*/
 static void compile_for(void) {
+    uint16_t pc;
     uint8_t tok;
+    uint16_t idx;
+
+    if(++NestedLoopIdx >= cfg_MAX_FOR_LOOPS) {
+        error("too many nested 'for/while' loops", NULL);
+    }
+
+    // FOR ID
     match(ID);
-    uint16_t idx = SymIdx;
+    idx = SymIdx;
     match(EQ);
     compile_expression(e_NUM);
     p_Code[Pc++] = k_POP_VAR_N2;
@@ -542,38 +575,117 @@ static void compile_for(void) {
         p_Code[Pc++] = k_PUSH_NUM_N2;
         p_Code[Pc++] = 1;
     }
-    // Save start address
-    if(ForLoopIdx >= cfg_MAX_FOR_LOOPS) {
-        error("too many nested 'for' loops", NULL);
-    }
-    a_ForLoopVariables[ForLoopIdx] = idx;
-    a_ForLoopStartAddr[ForLoopIdx++] = Pc;
-}
 
-// ID =  ID + Step ID3            k_NEXT_N4 start var
-// ID <= ID2 GOTO start           
-static void compile_next(void) {
-    uint8_t tok = lookahead();
-    uint16_t idx;
-    uint16_t addr;
-
-    if(ForLoopIdx == 0) {
-        error("'next' without 'for'", NULL);
+    pc = Pc;
+    while(get_line()) {
+        tok = lookahead();
+        if(tok == NEXT) {
+            break;
+        }
+        compile_line();
     }
-    idx = a_ForLoopVariables[ForLoopIdx - 1];
+
+    // NEXT [ID]
+    match(NEXT);
+    tok = lookahead();
     if(tok == ID) {
         match(ID);
         if(idx != SymIdx) {
             error("mismatched 'for' and 'next'", NULL);
         }
     }
-    addr = a_ForLoopStartAddr[--ForLoopIdx];
     p_Code[Pc++] = k_NEXT_N4;
-    p_Code[Pc++] = addr & 0xFF;
-    p_Code[Pc++] = (addr >> 8) & 0xFF;
+    p_Code[Pc++] = pc & 0xFF;
+    p_Code[Pc++] = (pc >> 8) & 0xFF;
     p_Code[Pc++] = a_Symbol[idx].value;
+    NestedLoopIdx--;
 }
 
+#ifdef cfg_BASIC_V2
+/*
+** WHILE <Expression>
+** (not: goto end)
+**    <Statement>...
+** END
+*/
+static void compile_while(void) {
+    uint16_t pos1, pos2;
+    uint8_t tok;
+
+    if(++NestedLoopIdx >= cfg_MAX_FOR_LOOPS) {
+        error("too many nested 'for/while' loops", NULL);
+    }
+
+    pos1 = Pc;
+    compile_expression(e_NUM);
+    p_Code[Pc++] = k_IF_N3;
+    pos2 = Pc;
+    Pc += 2;
+    while(get_line()) {
+        tok = lookahead();
+        if(tok == END) {
+            break;
+        }
+        compile_line();
+    }
+    match(END);
+    p_Code[Pc++] = k_GOTO_N3;
+    p_Code[Pc++] = pos1 & 0xFF;
+    p_Code[Pc++] = (pos1 >> 8) & 0xFF;
+    ACS16(p_Code[pos2]) = Pc;
+    NestedLoopIdx--;
+}
+
+/*
+** IF <Expression> THEN
+** (not: goto else)
+**    <Statement>...
+** (goto end)
+** [ELSE
+**    <Statement>...]
+** END
+*/
+static void compile_if(void) {
+    uint8_t tok;
+    uint16_t pos1; // for else address
+    uint16_t pos2; // ifend
+
+    compile_expression(e_NUM);
+    p_Code[Pc++] = k_IF_N3;
+    pos1 = Pc;
+    Pc += 2;
+    tok = lookahead();
+    match(THEN);
+
+    while(get_line()) {
+        tok = lookahead();
+        if(tok == ELSE || tok == END) {
+            break;
+        }
+        compile_line();
+    }
+
+    if(tok == ELSE) {
+        p_Code[Pc++] = k_GOTO_N3;
+        pos2 = Pc;
+        Pc += 2;
+        ACS16(p_Code[pos1]) = Pc;
+
+        while(get_line()) {
+            tok = lookahead();
+            if(tok == END) {
+                break;
+            }
+            compile_line();
+        }
+
+        ACS16(p_Code[pos2]) = Pc;
+    } else {
+        ACS16(p_Code[pos1]) = Pc;
+    }
+    match(END);
+}
+#else
 static void compile_if(void) {
     uint8_t tok;
 
@@ -604,6 +716,7 @@ static void compile_if(void) {
         ACS16(p_Code[pos]) = Pc;
     }
 }
+#endif
 
 static void compile_goto(void) {
     uint16_t addr;
@@ -625,7 +738,8 @@ static void compile_gosub(void) {
     uint16_t addr;
 #ifdef cfg_LINE_NUMBERS
     match(NUM);
-    addr = sym_get(a_Buff);
+    SymIdx = sym_add(a_Buff, 0, LABEL);
+    addr = 0;
 #else
     label();
     addr = a_Symbol[SymIdx].value;
@@ -640,8 +754,7 @@ static void compile_return(void) {
     p_Code[Pc++] = k_RETURN_N1;
 }
 
-static void compile_var(void) {
-    uint8_t tok = next();
+static void compile_var(uint8_t tok) {
     uint16_t idx = SymIdx;
     type_t type;
 
@@ -767,9 +880,15 @@ static void compile_string(void) {
     Pc += len - 1;
 }
 
+#ifdef cfg_BASIC_V2
+static void compile_exit(void) {
+    p_Code[Pc++] = k_END;
+}
+#else
 static void compile_end(void) {
     p_Code[Pc++] = k_END;
 }
+#endif
 
 static type_t compile_xfunc(void) {
     uint8_t idx = sym_get(a_Buff);
@@ -852,6 +971,7 @@ static void compile_get(uint8_t tok, uint8_t instr) {
 }
 #endif
 
+#ifdef cfg_BASIC_V2
 static void compile_const(void) {
     next();
     uint16_t idx = SymIdx;
@@ -860,10 +980,11 @@ static void compile_const(void) {
     a_Symbol[idx].type = e_CNST;
     a_Symbol[idx].value = Value;
 }
+#endif
 
 static void compile_erase(void) {
     uint8_t tok = next();
-    if(tok == ID || tok == ARR) {
+    if(tok == SID || tok == ARR) {
         p_Code[Pc++] = k_ERASE_ARR_N2;
         p_Code[Pc++] = a_Symbol[SymIdx].value;
     } else {
@@ -1365,6 +1486,23 @@ static type_t compile_factor(void) {
         p_Code[Pc++] = k_INSTR_N1;
         type = e_NUM;
         break;
+    case PARAMS: // Move value from (external) parameter stack to the data stack
+        match(PARAMS);
+        match('(');
+        match(')');
+        p_Code[Pc++] = k_PARAMS_N1;
+        type = e_STR;
+        break;
+    case STRINGS: // string$ function
+        match(STRINGS);
+        match('(');
+        compile_expression(e_NUM);
+        match(',');
+        compile_expression(e_NUM);
+        match(')');
+        p_Code[Pc++] = k_ALLOC_STR_N1;
+        type = e_STR;
+        break;
 #endif        
     case PARAM: // Move value from (external) parameter stack to the data stack
         match(PARAM);
@@ -1372,13 +1510,6 @@ static type_t compile_factor(void) {
         match(')');
         p_Code[Pc++] = k_PARAM_N1;
         type = e_NUM;
-        break;
-    case PARAMS: // Move value from (external) parameter stack to the data stack
-        match(PARAMS);
-        match('(');
-        match(')');
-        p_Code[Pc++] = k_PARAMS_N1;
-        type = e_STR;
         break;
     case RND: // Random number
         match(RND);
@@ -1394,16 +1525,6 @@ static type_t compile_factor(void) {
         match(XFUNC);
         type = compile_xfunc();
         p_Code[Pc++] = k_PARAM_N1;
-        break;
-    case STRINGS: // string$ function
-        match(STRINGS);
-        match('(');
-        compile_expression(e_NUM);
-        match(',');
-        compile_expression(e_NUM);
-        match(')');
-        p_Code[Pc++] = k_ALLOC_STR_N1;
-        type = e_STR;
         break;
     default:
         error("syntax error", a_Buff);
