@@ -58,6 +58,7 @@ uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *typ
 void *nb_create(void);
 uint16_t nb_compile(void *pv_vm, void *fp);
 uint16_t nb_run(void *pv_vm, uint16_t cycles);
+void nb_reset(void *pv_vm);
 void nb_destroy(void * pv_vm);
 
 /*
@@ -87,6 +88,6 @@ void nb_push_str(void *pv_vm, char *str);
 ** Array access functions
 */
 // provide the name in lower case
-uint16_t jbi_get_var_num(void *pv_vm, char *name);
+uint16_t nb_get_var_num(void *pv_vm, char *name);
 uint16_t nb_read_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes);
 uint16_t nb_write_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes);

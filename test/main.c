@@ -27,7 +27,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <time.h>
 #include <errno.h>
 #include <stdarg.h>
-#include "nb.h"
+#include "../src/nb.h"
 
 #define MAX_CODE_SIZE   (1024 * 16)
 
@@ -79,12 +79,12 @@ int main(int argc, char* argv[]) {
     assert(nb_define_external_function("efunc2", 0, (uint8_t[]){}, NB_NUM) == 1);
     assert(nb_define_external_function("efunc3", 0, (uint8_t[]){}, NB_STR) == 2);
     void *instance = nb_create();
-    //FILE *fp = fopen("../examples/basicV2.bas", "r");
-    //FILE *fp = fopen("../examples/lineno.bas", "r");
-    //FILE *fp = fopen("../examples/test.bas", "r");
-    //FILE *fp = fopen("../examples/basis.bas", "r");
-    //FILE *fp = fopen("../examples/ext_func.bas", "r");
-    FILE *fp = fopen("../examples/read_data.bas", "r");
+    //FILE *fp = fopen("../../examples/basicV2.bas", "r");
+    //FILE *fp = fopen("../../examples/lineno.bas", "r");
+    //FILE *fp = fopen("../../examples/test.bas", "r");
+    //FILE *fp = fopen("../../examples/basis.bas", "r");
+    //FILE *fp = fopen("../../examples/ext_func.bas", "r");
+    FILE *fp = fopen("../../examples/read_data.bas", "r");
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
         return -1;
@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
 
     nb_output_symbol_table(instance);
     efunc4 = nb_get_label_address(instance, "efunc4");
-    ext_buf = jbi_get_var_num(instance, "extbuf");
+    ext_buf = nb_get_var_num(instance, "extbuf");
 
     nb_print("\nNanoBasic Interpreter V1.0\n");
     nb_dump_code(instance);

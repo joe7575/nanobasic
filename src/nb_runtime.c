@@ -48,6 +48,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 /***************************************************************************************************
 **    global functions
 ***************************************************************************************************/
+void nb_reset(void *pv_vm) {
+    t_VM *vm = pv_vm;
+    vm->pc = 0;
+    vm->dsp = 0;
+    vm->csp = 0;
+    vm->psp = 0;
+    memset(vm->variables, 0, sizeof(vm->variables));
+    memset(vm->datastack, 0, sizeof(vm->datastack));
+    memset(vm->callstack, 0, sizeof(vm->callstack));
+    memset(vm->paramstack, 0, sizeof(vm->paramstack));
+    memset(vm->heap, 0, sizeof(vm->heap));
+    nb_mem_init(vm);
+}
+
 uint32_t nb_pop_num(void *pv_vm) {
     t_VM *vm = pv_vm;
     if(vm->psp == 0) {
@@ -698,7 +712,7 @@ uint16_t nb_run(void *pv_vm, uint16_t cycles) {
 }
 
 void nb_destroy(void * pv_vm) {
-  free(pv_vm);
+    free(pv_vm);
 }
 
 /***************************************************************************************************

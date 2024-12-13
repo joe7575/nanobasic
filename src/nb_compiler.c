@@ -240,11 +240,11 @@ void nb_init(void) {
 
 uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type) {
     if(NumXFuncs >= cfg_MAX_NUM_XFUNC) {
-        error("too many external functions", NULL);
+        nb_print("Error: too many external functions\n");
         return 0;
     }
     if(num_params > MAX_XFUNC_PARAMS) {
-        error("too many parameters", NULL);
+        nb_print("Error: too many parameters\n");
         return 0;
     }
     sym_add(name, NumXFuncs, XFUNC);
@@ -271,6 +271,7 @@ uint16_t nb_compile(void *pv_vm, void *fp) {
     p_Code = vm->code;
     StartOfVars = CurrVarIdx;
     CurrVarIdx = 0;
+    NumXFuncs = 0;
     Pc = 0;
     FilePtr = fp;
     Linenum = 0;
@@ -351,7 +352,7 @@ uint16_t nb_get_label_address(void *pv_vm, char *name) {
 }   
 
 // return 255 if not found
-uint16_t jbi_get_var_num(void *pv_vm, char *name) {
+uint16_t nb_get_var_num(void *pv_vm, char *name) {
     (void)pv_vm;
     char str[MAX_SYM_LEN];
     // Convert to lower case
