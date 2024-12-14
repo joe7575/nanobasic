@@ -30,12 +30,66 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "nb.h"
 #include "nb_int.h"
 
+// byte nibble vs ASCII char
+#define NTOA(n)                 ((n) > 9   ? (n) + 55 : (n) + 48)
+#define ATON(a)                 ((a) > '9' ? (a) - 55 : (a) - 48)
+
 typedef struct {
     void *pv_vm;
     char *p_src;
     int src_pos;
 } nb_cpu_t;
 
+/**************************************************************************************************
+** Static helper functions
+**************************************************************************************************/
+static char *hash_uint16(uint16_t val, char *s) {
+    *s++ = 48 + (val % 64);
+    val = val / 64;
+    *s++ = 48 + (val % 64);
+    val = val / 64;
+    *s++ = 48 + val;
+    return s;
+}
+
+static void *check_vm(lua_State *L) {
+    void *ud = luaL_checkudata(L, 1, "nb_cpu");
+    luaL_argcheck(L, ud != NULL, 1, "'NanoBasic object' expected");
+    return ud;
+}
+
+static uint16_t table_to_bytes(lua_State *L, uint8_t idx, uint8_t *p_dest, uint16_t max_size) {
+    if(lua_istable(L, idx)) {
+        size_t num = lua_objlen(L, idx);
+        num = MIN(num, max_size);
+        for(size_t i = 0; i < num; i++) {
+            lua_rawgeti(L, idx, i+1);
+            p_dest[i] = luaL_checkinteger(L, -1);
+            lua_pop(L, 1);
+        }
+        return num;
+    }
+    return 0;
+}
+
+static void bin_to_str(char *p_dst_str, uint8_t *p_src_bin, uint32_t str_size) {
+    for(int i = 0; i < str_size/2; i++) {
+        *p_dst_str++ = NTOA(*p_src_bin >> 4);
+        *p_dst_str++ = NTOA(*p_src_bin & 0x0f);
+        p_src_bin++;
+    }
+}
+
+static void str_to_bin(uint8_t *p_dst_bin, char *p_src_str, uint32_t str_size) {
+    for(int i = 0; i < str_size/2; i++) {
+        *p_dst_bin++ = (ATON(p_src_str[0]) << 4) + ATON(p_src_str[1]);
+        p_src_str += 2;
+    }
+}
+
+/**************************************************************************************************
+** External NanoBasic functions
+**************************************************************************************************/
 char *nb_get_code_line(void *fp, char *line, int max_line_len)
 {
     nb_cpu_t *C = (nb_cpu_t *)fp;
@@ -64,29 +118,12 @@ void nb_print(const char * format, ...)
     va_end(args);
 }
 
-static void *check_vm(lua_State *L) {
-    void *ud = luaL_checkudata(L, 1, "nb_cpu");
-    luaL_argcheck(L, ud != NULL, 1, "'NanoBasic object' expected");
-    return ud;
-}
-
+/**************************************************************************************************
+** Lua API functions
+**************************************************************************************************/
 static int version(lua_State *L) {
     lua_pushstring(L, SVERSION);
     return 1;
-}
-
-static uint16_t table_to_bytes(lua_State *L, uint8_t idx, uint8_t *p_dest, uint16_t max_size) {
-    if(lua_istable(L, idx)) {
-        size_t num = lua_objlen(L, idx);
-        num = MIN(num, max_size);
-        for(size_t i = 0; i < num; i++) {
-            lua_rawgeti(L, idx, i+1);
-            p_dest[i] = luaL_checkinteger(L, -1);
-            lua_pop(L, 1);
-        }
-        return num;
-    }
-    return 0;
 }
 
 static int add_function(lua_State *L) {
@@ -154,8 +191,10 @@ static int reset(lua_State *L) {
 static int pack_vm(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
-        lua_pushlstring(L, (const char *)C->pv_vm, sizeof(t_VM));
-        free(C->pv_vm);
+        // pack the VM into a Lua string by means of bin_to_str (binary to HEX string conversion)
+        char s[sizeof(t_VM)*2];
+        bin_to_str(s, (uint8_t*)C->pv_vm, sizeof(t_VM));
+        lua_pushlstring(L, s, sizeof(t_VM)*2);
         return 1;
     }
     return 0;
@@ -165,14 +204,12 @@ static int unpack_vm(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if((C != NULL) && (lua_isstring(L, 2))) {
         size_t size;
-        uint8_t *s = (uint8_t*)lua_tolstring(L, 2, &size);
-        if(size == sizeof(t_VM)) {
-            C->pv_vm = malloc(sizeof(t_VM));
-            if(C->pv_vm != NULL) {
-                memcpy(C->pv_vm, s, sizeof(t_VM));
-                lua_pushboolean(L, 1);
-                return 1;
-            }
+        const char *s = lua_tolstring(L, 2, &size);
+        if(size == sizeof(t_VM)*2) {
+            // unpack the VM from a Lua string by means of str_to_bin (HEX string to binary conversion)
+            str_to_bin((uint8_t*)C->pv_vm, (char*)s, sizeof(t_VM)*2);
+            lua_pushboolean(L, 1);
+            return 1;
         }
     }
     lua_pushboolean(L, 0);
@@ -322,18 +359,6 @@ static int write_arr(lua_State *L) {
     return 0;
 }
 
-/*
-** High perform. hash function
-*/
-static char *hash_uint16(uint16_t val, char *s) {
-    *s++ = 48 + (val % 64);
-    val = val / 64;
-    *s++ = 48 + (val % 64);
-    val = val / 64;
-    *s++ = 48 + val;
-    return s;
-}
-
 static int hash_node_position(lua_State *L) {
     int16_t x, y, z;
     char s[12];
@@ -402,9 +427,6 @@ static const luaL_Reg R[] = {
 };
 
 /* }====================================================== */
-
-
-
 LUALIB_API int luaopen_nanobasiclib(lua_State *L) {
     nb_init();
     luaL_newmetatable(L, "nb_cpu");

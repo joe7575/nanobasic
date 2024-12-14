@@ -21,11 +21,11 @@ build = {
     type = "builtin",
     modules = {
         nanobasiclib = {
-            "./nb_lua.c",
-            "./nb_scanner.c",
-            "./nb_compiler.c",
-            "./nb_runtime.c",
-            "./nb_memory.c"
+            "./src/nb_lua.c",
+            "./src/nb_scanner.c",
+            "./src/nb_compiler.c",
+            "./src/nb_runtime.c",
+            "./src/nb_memory.c"
         },
     }
 }

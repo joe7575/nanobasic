@@ -41,15 +41,15 @@ local function simu()
         return
     end
     print(nblib.run(vm, 1000))
-    --local s = nblib.pack_vm(vm)
-    --print(#s)
-    --nblib.unpack_vm(vm, s)
+    local s = nblib.pack_vm(vm)
+    print(#s)
+    nblib.unpack_vm(vm, s)
     print(nblib.reset(vm))
     print(nblib.run(vm, 1000))
     nblib.destroy(vm)
 end
 
-for i = 1, 10000000 do
+for i = 1, 1000 do
     simu()
 end
 
