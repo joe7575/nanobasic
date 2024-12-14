@@ -27,7 +27,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <time.h>
 #include <errno.h>
 #include <stdarg.h>
-#include "../src/nb.h"
+#include "nb.h"
 
 #define MAX_CODE_SIZE   (1024 * 16)
 
@@ -80,11 +80,11 @@ int main(int argc, char* argv[]) {
     assert(nb_define_external_function("efunc3", 0, (uint8_t[]){}, NB_STR) == 2);
     void *instance = nb_create();
     //FILE *fp = fopen("../../examples/basicV2.bas", "r");
-    //FILE *fp = fopen("../../examples/lineno.bas", "r");
+    FILE *fp = fopen("../examples/lineno.bas", "r");
     //FILE *fp = fopen("../../examples/test.bas", "r");
     //FILE *fp = fopen("../../examples/basis.bas", "r");
     //FILE *fp = fopen("../../examples/ext_func.bas", "r");
-    FILE *fp = fopen("../../examples/read_data.bas", "r");
+    //FILE *fp = fopen("../../examples/read_data.bas", "r");
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
         return -1;

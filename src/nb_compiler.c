@@ -137,12 +137,14 @@ static void compile_end(void);
 #endif
 static type_t compile_xfunc(void);
 static void compile_break(void);
+#ifdef cfg_BYTE_ACCESS
 static void compile_set1(void);
 static void compile_set2(void);
 static void compile_set4(void);
 static void compile_copy(void);
 static void compile_set(uint8_t instr);
 static void compile_get(uint8_t tok, uint8_t instr);
+#endif
 static void compile_erase(void);
 static void compile_on(void);
 static uint8_t list_of_numbers(void);
@@ -380,10 +382,18 @@ static bool get_line(void) {
         if(strlen(a_Line) > (MAX_LINE_LEN - 2)) {
             error("line too long", NULL);
         }
+        p_pos = p_next = a_Line;
+
 #ifndef cfg_LINE_NUMBERS        
         Linenum++;
+#else
+        uint8_t tok = lookahead();
+        if(tok == NUM) {
+            match(NUM);
+            Linenum = Value;
+            SymIdx = sym_add(a_Buff, Pc, LABEL);
+        }
 #endif
-        p_pos = p_next = a_Line;
         return true;
     }
     return false;
@@ -480,17 +490,8 @@ static void label(void) {
 #endif
 
 static void compile_line(void) {
-    uint8_t tok;
-
-#ifdef cfg_LINE_NUMBERS    
-    tok = lookahead();
-    if(tok == NUM) {
-        match(NUM);
-        Linenum = Value;
-        SymIdx = sym_add(a_Buff, Pc, LABEL);
-    }
-#else
-    tok = lookahead();
+#ifndef cfg_LINE_NUMBERS    
+    uint8_t tok = lookahead();
     if(tok == ID || tok == LABEL) {
         uint16_t idx = SymIdx;
         tok = lookahead();
@@ -547,12 +548,12 @@ static void compile_stmt(void) {
 #ifdef cfg_BASIC_V2
     case EXIT: compile_exit(); break;
     case CONST: compile_const(); break;
+    case WHILE: compile_while(); break;
 #else    
     case END: compile_end(); break;
 #endif
     case XFUNC: compile_xfunc(); break;
     case BREAK: compile_break(); break;
-    case WHILE: compile_while(); break;
 #ifdef cfg_BYTE_ACCESS    
     case SET1: compile_set1(); break;
     case SET2: compile_set2(); break;

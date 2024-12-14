@@ -17,24 +17,59 @@
 ]]--
 
 -- Parameters types
-NB_NONE     = 0
-NB_NUM      = 1
-NB_STR      = 2
-NB_ARR      = 3
+local NB_NONE     = 0
+local NB_NUM      = 1
+local NB_STR      = 2
+local NB_ARR      = 3
 
 -- Return values of 'nb_run()'
-NB_END      = 0  -- programm end reached
-NB_ERROR    = 1  -- error in programm
-NB_BUSY     = 2  -- programm still running
-NB_BREAK    = 3  -- break command
-NB_XFUNC    = 4  -- 'call' external function
+local NB_END      = 0  -- programm end reached
+local NB_ERROR    = 1  -- error in programm
+local NB_BUSY     = 2  -- programm still running
+local NB_BREAK    = 3  -- break command
+local NB_XFUNC    = 4  -- 'call' external function
 
 local nblib = require("nanobasiclib")
 
-local function simu()
-    print("Version:", nblib.version())
+local script = [[1 REM NanoBasic example for a configuration with line numbers
+2 REM and only core functionality
+10 ' This is a comment
+20 REM this is a comment too
+30 ' Variable declaration
+40 a = 10
+50 let B$ = string$(10, 0)
+60 dim Arr(10)
+100 ' For loops
+110 FOR i = 0 to a
+120   PRINT i,
+130 next i
+140 print  ' newline
+150 FOR j = 0 to 10 step 2
+160   PRINT j,
+170 next j
+180 print
+200 ' If statement
+210 IF a = 10 THEN PRINT "a is 10" ELSE PRINT "a is not 10"
+220 ' Gosub statement
+230 gosub 300
+240 ' For loop with data statement
+250 FOR i = 1 to 8
+260   read var1, var2
+270   PRINT var1 "+" var2 "=" var1 + var2
+280 next
+290 end
+300 ' Subroutine
+310 PRINT "subroutine at line 300"
+320 return
+400 ' Data statement
+410 DATA 1, 2, 3, 4, 5, 6, 7, 8
+420 DATA 9, 10, 11, 12, 13, 14, 15, 16
+]]
+
+local function test()
+    print("Version: V", nblib.version())
     print("Sleep:  ", nblib.add_function("sleep", {NB_NUM}, NB_NONE))
-    local vm, sts = nblib.create('print 1+2\nexit\n')
+    local vm, sts = nblib.create(script)
     print("Create: ", sts, vm)
     if sts ~= 0 then
         print("Error:", sts)
@@ -49,7 +84,5 @@ local function simu()
     nblib.destroy(vm)
 end
 
-for i = 1, 1000 do
-    simu()
-end
+test()
 
