@@ -2,6 +2,5 @@
 
 sudo luarocks make
 
-sudo luarocks remove nanobasic
-sudo luarocks install nanobasic
+# sudo luarocks install nanobasic
 

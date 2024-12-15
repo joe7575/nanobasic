@@ -48,7 +48,7 @@ enum {
     GET2, GET4, LEFTS, RIGHTS,  // 164 - 167
     MIDS, LEN, VAL, STRS,       // 168 - 171
     SPC, PARAM, COPY, CONST,    // 172 - 175
-    ERASE, ELSE, HEXS, CHRS,    // 176 - 179
+    ERASE, ELSE, HEXS,     // 176 - 179
     INSTR, ON, TRON, TROFF,     // 180 - 183
     FREE, RND, PARAMS, STRINGS, // 184 - 187
     WHILE, EXIT, DATA, READ,    // 188 - 191
@@ -223,7 +223,6 @@ void nb_init(void) {
     sym_add("str$", 0, STRS);
     sym_add("spc", 0, SPC);
     sym_add("hex$", 0, HEXS);
-    sym_add("chr$", 0, CHRS);
     sym_add("param$", 0, PARAMS);
     sym_add("string$", 0, STRINGS);
 #endif
@@ -273,7 +272,6 @@ uint16_t nb_compile(void *pv_vm, void *fp) {
     p_Code = vm->code;
     StartOfVars = CurrVarIdx;
     CurrVarIdx = 0;
-    NumXFuncs = 0;
     Pc = 0;
     FilePtr = fp;
     Linenum = 0;
@@ -405,9 +403,6 @@ static uint8_t next_token(void) {
     }
     p_next = nb_scanner(p_pos, a_Buff);
     if(a_Buff[0] == '\0') {
-       return 0; // End of line
-    }
-    if(a_Buff[0] == '\n') {
        return 0; // End of line
     }
     if(a_Buff[0] == '\"') {
@@ -1564,14 +1559,6 @@ static type_t compile_factor(void) {
         compile_expression(e_NUM);
         match(')');
         p_Code[Pc++] = k_VAL_TO_HEX_N1;
-        type = e_STR;
-        break;
-    case CHRS: // chr$ function
-        match(CHRS);
-        match('(');
-        compile_expression(e_NUM);
-        match(')');
-        p_Code[Pc++] = k_VAL_TO_CHR_N1;
         type = e_STR;
         break;
     case INSTR: // instr function

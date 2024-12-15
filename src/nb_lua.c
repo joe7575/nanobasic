@@ -23,6 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <time.h>
 #include <errno.h>
 #include <string.h>
+#include <assert.h>
 
 #include "lua.h"
 #include "lauxlib.h"
@@ -33,12 +34,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 // byte nibble vs ASCII char
 #define NTOA(n)                 ((n) > 9   ? (n) + 55 : (n) + 48)
 #define ATON(a)                 ((a) > '9' ? (a) - 55 : (a) - 48)
+#define MAX_LINES               20
+#define MAX_LINE_LEN            61
+#define LAST_LINE               ((MAX_LINES - 1) * MAX_LINE_LEN)
 
 typedef struct {
     void *pv_vm;
     char *p_src;
     int src_pos;
+    char screen_buffer[MAX_LINES * MAX_LINE_LEN];
+    uint8_t xpos;
+    uint8_t ypos;
 } nb_cpu_t;
+
+// Used to connect compile/run with nb_print, which should work on the same CPU instance
+static nb_cpu_t *p_Cpu = NULL;
 
 /**************************************************************************************************
 ** Static helper functions
@@ -110,12 +120,46 @@ char *nb_get_code_line(void *fp, char *line, int max_line_len)
     return line;
 }
 
+static void new_line(nb_cpu_t *C) {
+    C->xpos = 0;
+    C->ypos++;
+    if(C->ypos >= MAX_LINES) {
+        C->ypos = MAX_LINES - 1;
+        memmove(C->screen_buffer, C->screen_buffer + MAX_LINE_LEN, LAST_LINE);
+        memset(C->screen_buffer + LAST_LINE, ' ', MAX_LINE_LEN);
+        C->screen_buffer[LAST_LINE + MAX_LINE_LEN - 1] = '\0';
+    }
+}
+
 void nb_print(const char * format, ...)
 {
+    char buffer[MAX_LINE_LEN + 1];
+    uint8_t pos;
     va_list args;
-    va_start(args, format);
-    vprintf(format, args);
-    va_end(args);
+
+    if(p_Cpu != NULL) {
+        va_start(args, format);
+        vsnprintf(buffer, sizeof(buffer), format, args);
+        va_end(args);
+        //printf(":%lu: %s", (uint64_t)p_Cpu->screen_buffer, buffer);
+        //printf("screen_buffer1=>>%s<<", p_Cpu->screen_buffer);
+        buffer[MAX_LINE_LEN] = '\0';
+        for(int i = 0; i < strlen(buffer); i++) {
+            if (buffer[i] >= ' ' && buffer[i] <= '~') {
+                p_Cpu->screen_buffer[p_Cpu->ypos * MAX_LINE_LEN + p_Cpu->xpos] = buffer[i];
+                p_Cpu->xpos = MIN(p_Cpu->xpos + 1, MAX_LINE_LEN - 2);
+            } else if(buffer[i] == '\n') {
+                // new line
+                new_line(p_Cpu);
+            } else if(buffer[i] == '\t') {
+                // tabulator to next 10th position
+                pos = p_Cpu->xpos;
+                p_Cpu->xpos = (p_Cpu->xpos + 10) / 10 * 10;
+                memset(p_Cpu->screen_buffer + p_Cpu->ypos * MAX_LINE_LEN + pos, ' ', p_Cpu->xpos - pos);
+            }
+        }
+        //printf("screen_buffer2=>>%s<<", p_Cpu->screen_buffer);
+    }
 }
 
 /**************************************************************************************************
@@ -148,8 +192,18 @@ static int create(lua_State *L) {
         }
         C->p_src = p_src;
         C->src_pos = 0;
+        memset(C->screen_buffer, ' ', MAX_LINES * MAX_LINE_LEN);
+        for(int i = 1; i < MAX_LINES; i++) {
+            C->screen_buffer[i * MAX_LINE_LEN - 1] = '\n';
+        }
+        C->screen_buffer[MAX_LINES * MAX_LINE_LEN - 1] = '\0';
+        //printf("screen_buffer=>>%s<<", C->screen_buffer);
+        C->xpos = 0;
+        C->ypos = 0;
+        p_Cpu = C;
         uint16_t errors = nb_compile(C->pv_vm, (void *)C);
-        printf("errors=%d\n", errors);
+        p_Cpu = NULL;
+        //printf("errors=%d\n", errors);
         if(errors > 0) {
             lua_pushinteger(L, errors);
             return 2;
@@ -167,14 +221,55 @@ static int create(lua_State *L) {
 
 static int run(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
-    lua_Integer cycles = luaL_checkinteger(L, 2);
+    uint16_t cycles = (uint16_t)luaL_checkinteger(L, 2);
+    int res = NB_BUSY;
     if(C != NULL) {
-        int res = nb_run(C->pv_vm, cycles);
+        p_Cpu = C;
+        while(cycles > 0 && res >= NB_BUSY) {
+            res = nb_run(C->pv_vm, &cycles);
+            if(res >= NB_XFUNC) {
+                if(res == NB_XFUNC) {
+                    // setcur
+                    uint8_t y = nb_pop_num(C->pv_vm);
+                    uint8_t x = nb_pop_num(C->pv_vm);
+                    C->xpos = MAX(1, MIN(x, MAX_LINE_LEN)) - 1;
+                    C->ypos = MAX(1, MIN(y, MAX_LINES)) - 1;
+                } else if(res == NB_XFUNC + 1) {
+                    // clrscr
+                    memset(C->screen_buffer, ' ', sizeof(C->screen_buffer));
+                    C->screen_buffer[sizeof(C->screen_buffer) - 1] = '\0';
+                    C->xpos = 0;
+                    C->ypos = 0;
+                } else if(res == NB_XFUNC + 2) {
+                    // clrline
+                    uint8_t y = nb_pop_num(C->pv_vm);
+                    C->ypos = MAX(1, MIN(y, MAX_LINES)) - 1;
+                    memset(C->screen_buffer + C->ypos * MAX_LINE_LEN, ' ', MAX_LINE_LEN);
+                }
+            }
+        }
+        if(res == NB_END) {
+            nb_print("Ready.\n");
+        }
+        p_Cpu = NULL;
         lua_pushinteger(L, res);
         return 1;
     }
     lua_pushinteger(L, -1);
     return 1;
+}
+
+static int get_screen_buffer(lua_State *L) {
+    nb_cpu_t *C = check_vm(L);
+    if(C != NULL) {
+        for(int i = 1; i < MAX_LINES; i++) {
+            C->screen_buffer[i * MAX_LINE_LEN - 1] = '\n';
+        }
+        C->screen_buffer[MAX_LINES * MAX_LINE_LEN - 1] = '\0';
+        lua_pushlstring(L, C->screen_buffer, MAX_LINES * MAX_LINE_LEN);
+        return 1;
+    }
+    return 0;
 }
 
 static int reset(lua_State *L) {
@@ -409,6 +504,7 @@ static const luaL_Reg R[] = {
     {"pack_vm",                 pack_vm},
     {"unpack_vm",               unpack_vm},
     {"run",                     run},
+    {"get_screen_buffer",       get_screen_buffer},
     {"dump_code",               dump_code},
     {"output_symbol_table",     output_symbol_table},
     {"get_label_address",       get_label_address},
@@ -429,6 +525,9 @@ static const luaL_Reg R[] = {
 /* }====================================================== */
 LUALIB_API int luaopen_nanobasiclib(lua_State *L) {
     nb_init();
+    assert(nb_define_external_function("setcur", 2, (uint8_t[]){NB_NUM, NB_NUM}, NB_NONE) == 0);
+    assert(nb_define_external_function("clrscr", 0, (uint8_t[]){}, NB_NONE) == 1);
+    assert(nb_define_external_function("clrline", 1, (uint8_t[]){NB_NUM}, NB_NONE) == 2);
     luaL_newmetatable(L, "nb_cpu");
     luaL_register(L, NULL, R);
     return 1;

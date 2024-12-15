@@ -39,13 +39,14 @@ local script = [[1 REM NanoBasic example for a configuration with line numbers
 40 a = 10
 50 let B$ = string$(10, 0)
 60 dim Arr(10)
+70 Arr(0) = 2: Arr(2) = 4: Arr(4) = 6: Arr(6) = 8: Arr(8) = 10
 100 ' For loops
 110 FOR i = 0 to a
 120   PRINT i,
 130 next i
 140 print  ' newline
 150 FOR j = 0 to 10 step 2
-160   PRINT j,
+160   PRINT Arr(j),
 170 next j
 180 print
 200 ' If statement

@@ -28,6 +28,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <errno.h>
 #include <stdarg.h>
 #include "nb.h"
+#include "nb_int.h"
 
 #define MAX_CODE_SIZE   (1024 * 16)
 
@@ -42,10 +43,13 @@ int msleep(uint32_t msec)
     ts.tv_sec = msec / 1000;
     ts.tv_nsec = (msec % 1000) * 1000000;
 
+    //clock_t begin = clock();
     do {
         res = nanosleep(&ts, &ts);
     } while (res && errno == EINTR);
-
+    //clock_t end = clock();
+    //double time_spent = (double)(end - begin); //in microseconds
+    //printf("Time spent: %f\n", time_spent);
     return res;
 }
 
@@ -61,13 +65,9 @@ void nb_print(const char * format, ...) {
 }
 
 int main(int argc, char* argv[]) {
-    uint8_t ext_buf, efunc4;
     uint16_t res = NB_BUSY;
-    uint32_t cycles = 0;
-    uint16_t on_can;
+    uint16_t cycles;
     uint16_t errors;
-    char s[80];
-    uint8_t arr[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
     
     if (argc != 2) {
         nb_print("Usage: %s <programm>\n", argv[0]);
@@ -75,16 +75,19 @@ int main(int argc, char* argv[]) {
     }
     nb_print("NanoBasic Compiler V1.0\n");
     nb_init();
-    assert(nb_define_external_function("efunc1", 2, (uint8_t[]){NB_NUM, NB_STR}, NB_NONE) == 0);
-    assert(nb_define_external_function("efunc2", 0, (uint8_t[]){}, NB_NUM) == 1);
-    assert(nb_define_external_function("efunc3", 0, (uint8_t[]){}, NB_STR) == 2);
+    assert(nb_define_external_function("setcur", 2, (uint8_t[]){NB_NUM, NB_NUM}, NB_NONE) == 0);
+    assert(nb_define_external_function("clrscr", 0, (uint8_t[]){}, NB_NONE) == 1);
+    assert(nb_define_external_function("clrline", 1, (uint8_t[]){NB_NUM}, NB_NONE) == 2);
+    //assert(nb_define_external_function("efunc2", 0, (uint8_t[]){}, NB_NUM) == 1);
+    //assert(nb_define_external_function("efunc3", 0, (uint8_t[]){}, NB_STR) == 2);
     void *instance = nb_create();
-    //FILE *fp = fopen("../../examples/basicV2.bas", "r");
-    FILE *fp = fopen("../examples/lineno.bas", "r");
-    //FILE *fp = fopen("../../examples/test.bas", "r");
-    //FILE *fp = fopen("../../examples/basis.bas", "r");
-    //FILE *fp = fopen("../../examples/ext_func.bas", "r");
-    //FILE *fp = fopen("../../examples/read_data.bas", "r");
+    //FILE *fp = fopen("../examples/basicV2.bas", "r");
+    //FILE *fp = fopen("../examples/lineno.bas", "r");
+    //FILE *fp = fopen("../examples/test.bas", "r");
+    //FILE *fp = fopen("../examples/basis.bas", "r");
+    //FILE *fp = fopen("../examples/ext_func.bas", "r");
+    //FILE *fp = fopen("../examples/read_data.bas", "r");
+    FILE *fp = fopen("../examples/temp.bas", "r");
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
         return -1;
@@ -98,43 +101,36 @@ int main(int argc, char* argv[]) {
     }
 
     nb_output_symbol_table(instance);
-    efunc4 = nb_get_label_address(instance, "efunc4");
-    ext_buf = nb_get_var_num(instance, "extbuf");
+    //efunc4 = nb_get_label_address(instance, "efunc4");
+    //ext_buf = nb_get_var_num(instance, "extbuf");
 
     nb_print("\nNanoBasic Interpreter V1.0\n");
     nb_dump_code(instance);
 
     while(res >= NB_BUSY) {
-        // A simple for loop "for i = 1 to 100: print i: next i" 
-        // needs ~500 ticks or 1 second (50 cycles per 100 ms)
-        res = nb_run(instance, 50);
-        cycles += 50;
-        msleep(100);
-        if(res >= NB_XFUNC) {
+        cycles = 50;
+        while(cycles > 0 && res >= NB_BUSY) {
+            res = nb_run(instance, &cycles);
             if(res == NB_XFUNC) {
-                nb_print("External function efunc1(%d, \"%s\")\n", nb_pop_num(instance), nb_pop_str(instance, s, 80));
-                if(ext_buf != 255 && efunc4 > 0) {
-                    assert(nb_write_arr(instance, ext_buf, arr, 10) == 10);
-                    nb_set_pc(instance, efunc4);
-                    // provide parameters in reverse order (stack)
-                    nb_push_str(instance, "Hi Joe");
-                    nb_push_num(instance, 87654);
-                }
+                // setcur
+                uint8_t x = nb_pop_num(instance);
+                uint8_t y = nb_pop_num(instance);
+                x = MAX(1, MIN(x, 60));
+                y = MAX(1, MIN(y, 20));
+                nb_print("\033[%u;%uH", x, y);
             } else if(res == NB_XFUNC + 1) {
-                nb_print("External function efunc2()\n");
-                nb_push_num(instance, 87654);
+                // clrscr
+                nb_print("\033[2J");
             } else if(res == NB_XFUNC + 2) {
-                nb_print("External function efunc3()\n");
-                nb_push_str(instance, "Solali");
-            } else {
+                // clrline
+                nb_print("\033[2K");
+            } else if(res > NB_XFUNC + 2) {
                 nb_print("Unknown external function\n");
             }
-        } else if(on_can > 0){
         }
+        msleep(100);
     }
     nb_destroy(instance);
-
-    nb_print("Cycles: %u\n", cycles);
     nb_print("Ready.\n");
     return 0;
 }

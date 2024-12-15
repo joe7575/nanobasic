@@ -82,7 +82,7 @@ void nb_mem_free(t_VM *p_vm, uint16_t addr) {
         if(addr < cfg_MEM_HEAP_SIZE) {
             uint16_t size = p_vm->heap[addr] * k_MEM_BLOCK_SIZE;
             if((addr + size) <= cfg_MEM_HEAP_SIZE) {
-                for(uint8_t i = 0; i < size; i += k_MEM_BLOCK_SIZE) {
+                for(uint16_t i = 0; i < size; i += k_MEM_BLOCK_SIZE) {
                     p_vm->heap[addr + i] = k_MEM_FREE_TAG;
                 }
                 p_vm->mem_start_addr = MIN(p_vm->mem_start_addr, addr);
@@ -94,7 +94,7 @@ void nb_mem_free(t_VM *p_vm, uint16_t addr) {
 uint16_t nb_mem_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes) {
     if(addr > 0x7FFF && bytes <= cfg_MAX_MEM_BLOCK_SIZE) {
         addr = (addr & 0x7FFF) - HEADER_SIZE;
-        uint8_t num_blocks = p_vm->heap[addr];
+        uint16_t num_blocks = p_vm->heap[addr];
         uint16_t new_num_blocks = NUM_BLOCKS(bytes);
         uint16_t new_num_words = NUM_WORDS(bytes);
         if(new_num_blocks == num_blocks) {
@@ -105,7 +105,7 @@ uint16_t nb_mem_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes) {
             p_vm->heap[addr + 1] = new_num_words;
             uint16_t start = addr + new_num_blocks * k_MEM_BLOCK_SIZE;
             uint16_t stop = addr + num_blocks * k_MEM_BLOCK_SIZE;
-            for(uint8_t i = start; i < stop; i += k_MEM_BLOCK_SIZE) {
+            for(uint16_t i = start; i < stop; i += k_MEM_BLOCK_SIZE) {
             p_vm->heap[i] = k_MEM_FREE_TAG;
             }
             return 0x8000 + addr + HEADER_SIZE;

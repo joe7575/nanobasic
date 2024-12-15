@@ -57,7 +57,7 @@ void nb_init(void);
 uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type);
 void *nb_create(void);
 uint16_t nb_compile(void *pv_vm, void *fp);
-uint16_t nb_run(void *pv_vm, uint16_t cycles);
+uint16_t nb_run(void *pv_vm, uint16_t *p_cycles);
 void nb_reset(void *pv_vm);
 void nb_destroy(void * pv_vm);
 
