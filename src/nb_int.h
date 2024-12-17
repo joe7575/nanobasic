@@ -105,6 +105,8 @@ enum {
     k_VAL_TO_STR_N1,      // (str$)
     k_VAL_TO_HEX_N1,      // (hex$)
     k_INSTR_N1,           // (instr)
+#endif
+#if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)
     k_ALLOC_STR_N1,       // (alloc string)
 #endif
 };

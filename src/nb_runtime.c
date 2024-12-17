@@ -39,11 +39,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define PPUSH(x) vm->paramstack[(uint8_t)(vm->psp++) % cfg_STACK_SIZE] = x
 #define PPOP() vm->paramstack[(uint8_t)(--vm->psp) % cfg_STACK_SIZE]
 
-#define STR(x) (x >= 0x8000 ? (char*)&vm->heap[x & 0x7FFF] : (char*)&vm->code[x])
-
 /***************************************************************************************************
 **    static function-prototypes
 ***************************************************************************************************/
+static char *get_string(t_VM *vm, uint16_t addr);
 
 /***************************************************************************************************
 **    global functions
@@ -83,7 +82,7 @@ char *nb_pop_str(void *pv_vm, char *str, uint8_t len) {
         return NULL;
     }
     uint16_t addr = PPOP();
-    strncpy(str, STR(addr), len);
+    strncpy(str, get_string(vm, addr), len);
     return str;
 }
 
@@ -151,7 +150,9 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
     uint16_t offs2, size1, size2;
 #endif
     uint8_t  var, val;
+#ifdef cfg_STRING_SUPPORT
     char     *str;
+#endif
     t_VM *vm = pv_vm;
 
     while((*p_cycles)-- > 1)
@@ -162,7 +163,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             return NB_END;
         case k_PRINT_STR_N1:
             tmp1 = DPOP();
-            nb_print("%s", STR(tmp1));
+            nb_print("%s", get_string(vm, tmp1));
             vm->pc += 1;
             break;
         case k_PRINT_VAL_N1:
@@ -364,10 +365,6 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
         case k_RESTORE_N2:
             var = vm->code[vm->pc + 1];
             offs1 = DPOP() * sizeof(uint32_t);
-            if(addr + offs1 + 4 > vm->code_size) {
-                nb_print("Error: Data address out of bounds\n");
-                return NB_ERROR;
-            }
             vm->variables[var] = offs1;
             vm->pc += 2;
             break;
@@ -533,7 +530,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             break;
         case k_FREE_N1:
             tmp1 = sizeof(vm->variables) / sizeof(vm->variables[0]);
-            nb_print(" Code=%u, data=%u, heap=%u bytes free\n", cfg_MAX_CODE_SIZE - vm->code_size,
+            nb_print(" %u/%u/%u bytes free (code/data/heap)\n", cfg_MAX_CODE_SIZE - vm->code_size,
                 tmp1 - vm->num_vars, nb_mem_get_free(vm));
         case k_RND_N1:
             tmp1 = DPOP();
@@ -544,54 +541,54 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             }
             vm->pc += 1;
             break;
-#ifdef cfg_STRING_SUPPORT            
+#ifdef cfg_STRING_SUPPORT
         case k_ADD_STR_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
-            uint16_t len = strlen(STR(tmp1)) + strlen(STR(tmp2)) + 1;
+            uint16_t len = strlen(get_string(vm, tmp1)) + strlen(get_string(vm, tmp2)) + 1;
             addr = nb_mem_alloc(vm, len);
             if(addr == 0) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            strcpy((char*)&vm->heap[addr & 0x7FFF], STR(tmp1));
-            strcat((char*)&vm->heap[addr & 0x7FFF], STR(tmp2));
+            strcpy((char*)&vm->heap[addr & 0x7FFF], get_string(vm, tmp1));
+            strcat((char*)&vm->heap[addr & 0x7FFF], get_string(vm, tmp2));
             DPUSH(addr);
             vm->pc += 1;
             break;
         case k_STR_EQUAL_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
-            DPUSH(strcmp(STR(tmp1), STR(tmp2)) == 0 ? 1 : 0);
+            DPUSH(strcmp(get_string(vm, tmp1), get_string(vm, tmp2)) == 0 ? 1 : 0);
             vm->pc += 1;
             break;
         case k_STR_NOT_EQU_N1 :
             tmp2 = DPOP();
             tmp1 = DPOP();
-            DPUSH(strcmp(STR(tmp1), STR(tmp2)) == 0 ? 0 : 1);
+            DPUSH(strcmp(get_string(vm, tmp1), get_string(vm, tmp2)) == 0 ? 0 : 1);
             vm->pc += 1;
             break;
         case k_STR_LESS_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
-            DPUSH(strcmp(STR(tmp1), STR(tmp2)) < 0 ? 1 : 0);
+            DPUSH(strcmp(get_string(vm, tmp1), get_string(vm, tmp2)) < 0 ? 1 : 0);
             vm->pc += 1;
             break;
         case k_STR_LESS_EQU_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
-            DPUSH(strcmp(STR(tmp1), STR(tmp2)) <= 0 ? 1 : 0);
+            DPUSH(strcmp(get_string(vm, tmp1), get_string(vm, tmp2)) <= 0 ? 1 : 0);
             vm->pc += 1;
             break;
         case k_STR_GREATER_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
-            DPUSH(strcmp(STR(tmp1), STR(tmp2)) > 0 ? 1 : 0);
+            DPUSH(strcmp(get_string(vm, tmp1), get_string(vm, tmp2)) > 0 ? 1 : 0);
             vm->pc += 1;
         case k_STR_GREATER_EQU_N1:
             tmp2 = DPOP();
             tmp1 = DPOP();
-            DPUSH(strcmp(STR(tmp1), STR(tmp2)) >= 0 ? 1 : 0);
+            DPUSH(strcmp(get_string(vm, tmp1), get_string(vm, tmp2)) >= 0 ? 1 : 0);
             vm->pc += 1;
             break;
         case k_LEFT_STR_N1:
@@ -602,7 +599,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            strncpy((char*)&vm->heap[addr & 0x7FFF], STR(tmp1), tmp2);
+            strncpy((char*)&vm->heap[addr & 0x7FFF], get_string(vm, tmp1), tmp2);
             DPUSH(addr);
             vm->pc += 1;
             break;
@@ -614,7 +611,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            strncpy((char*)&vm->heap[addr & 0x7FFF], STR(tmp1) + strlen(STR(tmp1)) - tmp2, tmp2);
+            strncpy((char*)&vm->heap[addr & 0x7FFF], get_string(vm, tmp1) + strlen(get_string(vm, tmp1)) - tmp2, tmp2);
             DPUSH(addr);
             vm->pc += 1;
             break;
@@ -627,18 +624,18 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            strncpy((char*)&vm->heap[addr & 0x7FFF], STR(idx) + tmp1, tmp2);
+            strncpy((char*)&vm->heap[addr & 0x7FFF], get_string(vm, idx) + tmp1, tmp2);
             DPUSH(addr);
             vm->pc += 1;
             break;
         case k_STR_LEN_N1:
             tmp1 = DPOP();
-            DPUSH(strlen(STR(tmp1)));
+            DPUSH(strlen(get_string(vm, tmp1)));
             vm->pc += 1;
             break;
         case k_STR_TO_VAL_N1:
             tmp1 = DPOP();
-            DPUSH(atoi(STR(tmp1)));
+            DPUSH(atoi(get_string(vm, tmp1)));
             vm->pc += 1;
             break;
         case k_VAL_TO_STR_N1:
@@ -668,15 +665,17 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             tmp1 = DPOP();  // search string
             val = DPOP() - 1;  // start position
             val = MAX(val, 0);
-            tmp1 += MIN(val, strlen(STR(tmp1)));
-            str = strstr(STR(tmp1), STR(tmp2));
+            tmp1 += MIN(val, strlen(get_string(vm, tmp1)));
+            str = strstr(get_string(vm, tmp1), get_string(vm, tmp2));
             if(str == NULL) {
                 DPUSH(0);
             } else {
-                DPUSH(str - STR(tmp1) + val + 1);
+                DPUSH(str - get_string(vm, tmp1) + val + 1);
             }
             vm->pc += 1;
             break;
+#endif
+#if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)
         case k_ALLOC_STR_N1:
             tmp2 = DPOP();  // fill char
             tmp1 = DPOP();  // string length
@@ -708,3 +707,18 @@ void nb_destroy(void * pv_vm) {
 /***************************************************************************************************
 * Static functions
 ***************************************************************************************************/
+static char *get_string(t_VM *vm, uint16_t addr) {
+    if(addr >= 0x8000) {
+        if(vm->heap[addr & 0x7FFF] == 0) {
+            return "";
+        }
+        return (char*)&vm->heap[addr & 0x7FFF];
+    } else if(addr == 0) {
+        return "";
+    } else {
+        if(vm->code[addr] == 0) {
+            return "";
+        }
+        return (char*)&vm->code[addr];
+    }
+}

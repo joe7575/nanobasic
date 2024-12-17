@@ -224,6 +224,8 @@ void nb_init(void) {
     sym_add("spc", 0, SPC);
     sym_add("hex$", 0, HEXS);
     sym_add("param$", 0, PARAMS);
+#endif
+#if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)
     sym_add("string$", 0, STRINGS);
 #endif
     sym_add("param", 0, PARAM);
@@ -362,6 +364,7 @@ uint16_t nb_get_var_num(void *pv_vm, char *name) {
             break;
         }
     }
+    str[MAX_SYM_LEN - 1] = '\0';
 
     for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL && strcmp(a_Symbol[i].name, str) == 0)
@@ -388,8 +391,12 @@ static bool get_line(void) {
         uint8_t tok = lookahead();
         if(tok == NUM) {
             match(NUM);
-            Linenum = Value;
-            SymIdx = sym_add(a_Buff, Pc, LABEL);
+            if(Value > 0 && Value < 65536) {
+                Linenum = Value;
+                SymIdx = sym_add(a_Buff, Pc, LABEL);
+            } else {
+                error("line number out of range", NULL);
+            }
         }
 #endif
         return true;
@@ -1152,6 +1159,8 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
             break;
         }
     }
+    sym[MAX_SYM_LEN - 1] = '\0';
+
     // Search for existing symbol
     for(uint16_t i = 0; i < cfg_MAX_NUM_SYM; i++) {
         if(strcmp(a_Symbol[i].name, sym) == 0) {
@@ -1190,6 +1199,8 @@ static uint16_t sym_get(char *id) {
             break;
         }
     }
+    sym[MAX_SYM_LEN - 1] = '\0';
+
     // Search for existing symbol
     for(uint16_t i = 0; i < cfg_MAX_NUM_SYM; i++) {
         if(strcmp(a_Symbol[i].name, sym) == 0) {
@@ -1580,6 +1591,8 @@ static type_t compile_factor(void) {
         p_Code[Pc++] = k_PARAMS_N1;
         type = e_STR;
         break;
+#endif
+#if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)        
     case STRINGS: // string$ function
         match(STRINGS);
         match('(');

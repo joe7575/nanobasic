@@ -36,8 +36,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define cfg_MAX_FW_DECL         (32)  // number of forward declarations (goto/gosub label)
 
 #ifdef cfg_LINE_NUMBERS
-    #define cfg_MAX_NUM_SYM     (16000) // for line numbers
+    #define cfg_MAX_NUM_SYM     (16000) // For keywords, variables, and line numbers
 #else
-    #define cfg_MAX_NUM_SYM     (256) // for labels only
+    #define cfg_MAX_NUM_SYM     (256) // For keywords, variables, and labels
 #endif
 

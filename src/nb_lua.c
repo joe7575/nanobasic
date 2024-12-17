@@ -170,13 +170,20 @@ static int version(lua_State *L) {
     return 1;
 }
 
+static int free_mem(lua_State *L) {
+    char s[80];
+    sprintf(s, "%u/%u/%u bytes free (code/data/heap)\n", cfg_MAX_CODE_SIZE, cfg_NUM_VARS * 4, cfg_MEM_HEAP_SIZE);
+    lua_pushlstring(L, s, strlen(s));
+    return 1;
+}
+
 static int add_function(lua_State *L) {
     char *name = (char *)luaL_checkstring(L, 1);
     uint8_t return_type = luaL_checkinteger(L, 3);
     uint8_t types[8];
     uint8_t num = table_to_bytes(L, 2, types, sizeof(types));
     uint8_t res = nb_define_external_function(name, num, types, return_type);
-    lua_pushinteger(L, res + NB_XFUNC);
+    lua_pushinteger(L, res);
     return 1;
 }
 
@@ -187,6 +194,8 @@ static int create(lua_State *L) {
     if(C != NULL) {
         C->pv_vm = nb_create();
         if(C->pv_vm == NULL) {
+            lua_pop(L, 1);
+            lua_pushnil(L);
             lua_pushinteger(L, -1);
             return 2;
         }
@@ -197,14 +206,14 @@ static int create(lua_State *L) {
             C->screen_buffer[i * MAX_LINE_LEN - 1] = '\n';
         }
         C->screen_buffer[MAX_LINES * MAX_LINE_LEN - 1] = '\0';
-        //printf("screen_buffer=>>%s<<", C->screen_buffer);
         C->xpos = 0;
         C->ypos = 0;
         p_Cpu = C;
         uint16_t errors = nb_compile(C->pv_vm, (void *)C);
         p_Cpu = NULL;
-        //printf("errors=%d\n", errors);
         if(errors > 0) {
+            luaL_getmetatable(L, "nb_cpu");
+            lua_setmetatable(L, -2);
             lua_pushinteger(L, errors);
             return 2;
         }
@@ -245,6 +254,11 @@ static int run(lua_State *L) {
                     uint8_t y = nb_pop_num(C->pv_vm);
                     C->ypos = MAX(1, MIN(y, MAX_LINES)) - 1;
                     memset(C->screen_buffer + C->ypos * MAX_LINE_LEN, ' ', MAX_LINE_LEN);
+                } else {
+                    res = res - NB_XFUNC;
+                    p_Cpu = NULL;
+                    lua_pushinteger(L, res);
+                    return 1;
                 }
             }
         }
@@ -272,6 +286,18 @@ static int get_screen_buffer(lua_State *L) {
     return 0;
 }
 
+static int print(lua_State *L) {
+    nb_cpu_t *C = check_vm(L);
+    if(C != NULL) {
+        const char *s = luaL_checkstring(L, 2);
+        p_Cpu = C;
+        nb_print("%s", s);
+        p_Cpu = NULL;
+        return 0;
+    }
+    return 0;
+}
+
 static int reset(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
@@ -286,10 +312,13 @@ static int reset(lua_State *L) {
 static int pack_vm(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
+        size_t size = sizeof(nb_cpu_t) * 2 + sizeof(t_VM) * 2;
         // pack the VM into a Lua string by means of bin_to_str (binary to HEX string conversion)
-        char s[sizeof(t_VM)*2];
-        bin_to_str(s, (uint8_t*)C->pv_vm, sizeof(t_VM));
-        lua_pushlstring(L, s, sizeof(t_VM)*2);
+        char s[size];
+        bin_to_str(s, (uint8_t*)C, sizeof(nb_cpu_t) * 2);
+        bin_to_str(s + sizeof(nb_cpu_t) * 2, (uint8_t*)C->pv_vm, sizeof(t_VM) * 2);
+        lua_pushlstring(L, s, size);
+        //printf("pack_vm %ld\n", size);
         return 1;
     }
     return 0;
@@ -300,9 +329,23 @@ static int unpack_vm(lua_State *L) {
     if((C != NULL) && (lua_isstring(L, 2))) {
         size_t size;
         const char *s = lua_tolstring(L, 2, &size);
-        if(size == sizeof(t_VM)*2) {
+        if(size == (sizeof(nb_cpu_t) * 2 + sizeof(t_VM) * 2)) {
             // unpack the VM from a Lua string by means of str_to_bin (HEX string to binary conversion)
-            str_to_bin((uint8_t*)C->pv_vm, (char*)s, sizeof(t_VM)*2);
+            nb_cpu_t cpu;
+            t_VM *p_vm = malloc(sizeof(t_VM));
+            if(p_vm == NULL) {
+                lua_pushboolean(L, 0);
+                return 1;
+            }
+            str_to_bin((uint8_t*)&cpu, (char*)s, sizeof(nb_cpu_t) * 2);
+            str_to_bin((uint8_t*)p_vm, (char*)s + sizeof(nb_cpu_t) * 2, sizeof(t_VM) * 2);
+            C->pv_vm = p_vm;
+            C->p_src = cpu.p_src;
+            C->src_pos = cpu.src_pos;
+            memcpy(C->screen_buffer, cpu.screen_buffer, sizeof(cpu.screen_buffer));
+            C->xpos = cpu.xpos;
+            C->ypos = cpu.ypos;
+            //printf("unpack_vm %ld\n", size);
             lua_pushboolean(L, 1);
             return 1;
         }
@@ -402,10 +445,10 @@ static int push_str(lua_State *L) {
 static int pop_str(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
-        char str[256];
-        char *res = nb_pop_str(C->pv_vm, str, (uint8_t)sizeof(str));
-        if(res != NULL) {
-            lua_pushstring(L, res);
+        char str[128];
+        char *ptr = nb_pop_str(C->pv_vm, str, (uint8_t)sizeof(str));
+        if(ptr != NULL) {
+            printf("pop_str %s\n", ptr);
             return 1;
         }
     }
@@ -497,6 +540,7 @@ static int msleep(lua_State *L) {
 
 static const luaL_Reg R[] = {
     {"version",                 version},
+    {"free_mem",                free_mem},
     {"add_function",            add_function},
     {"create",                  create},
     {"reset",                   reset},
@@ -505,6 +549,7 @@ static const luaL_Reg R[] = {
     {"unpack_vm",               unpack_vm},
     {"run",                     run},
     {"get_screen_buffer",       get_screen_buffer},
+    {"print",                   print},
     {"dump_code",               dump_code},
     {"output_symbol_table",     output_symbol_table},
     {"get_label_address",       get_label_address},

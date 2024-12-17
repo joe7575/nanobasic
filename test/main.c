@@ -68,6 +68,8 @@ int main(int argc, char* argv[]) {
     uint16_t res = NB_BUSY;
     uint16_t cycles;
     uint16_t errors;
+    uint32_t timeout = 0;
+     uint32_t startval = time(NULL);
     
     if (argc != 2) {
         nb_print("Usage: %s <programm>\n", argv[0]);
@@ -78,16 +80,19 @@ int main(int argc, char* argv[]) {
     assert(nb_define_external_function("setcur", 2, (uint8_t[]){NB_NUM, NB_NUM}, NB_NONE) == 0);
     assert(nb_define_external_function("clrscr", 0, (uint8_t[]){}, NB_NONE) == 1);
     assert(nb_define_external_function("clrline", 1, (uint8_t[]){NB_NUM}, NB_NONE) == 2);
-    //assert(nb_define_external_function("efunc2", 0, (uint8_t[]){}, NB_NUM) == 1);
-    //assert(nb_define_external_function("efunc3", 0, (uint8_t[]){}, NB_STR) == 2);
+    assert(nb_define_external_function("time", 0, (uint8_t[]){}, NB_NUM) == 3);
+    assert(nb_define_external_function("sleep", 1, (uint8_t[]){NB_NUM}, NB_NONE) == 4);
+    assert(nb_define_external_function("input", 1, (uint8_t[]){NB_STR}, NB_NUM) == 5);
+    assert(nb_define_external_function("input$", 1, (uint8_t[]){NB_STR}, NB_STR) == 6);
+
     void *instance = nb_create();
     //FILE *fp = fopen("../examples/basicV2.bas", "r");
     //FILE *fp = fopen("../examples/lineno.bas", "r");
     //FILE *fp = fopen("../examples/test.bas", "r");
     //FILE *fp = fopen("../examples/basis.bas", "r");
-    //FILE *fp = fopen("../examples/ext_func.bas", "r");
+    FILE *fp = fopen("../examples/ext_func.bas", "r");
     //FILE *fp = fopen("../examples/read_data.bas", "r");
-    FILE *fp = fopen("../examples/temp.bas", "r");
+    //FILE *fp = fopen("../examples/temp.bas", "r");
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
         return -1;
@@ -109,7 +114,7 @@ int main(int argc, char* argv[]) {
 
     while(res >= NB_BUSY) {
         cycles = 50;
-        while(cycles > 0 && res >= NB_BUSY) {
+        while(cycles > 0 && res >= NB_BUSY && timeout <= time(NULL)) {
             res = nb_run(instance, &cycles);
             if(res == NB_XFUNC) {
                 // setcur
@@ -124,7 +129,29 @@ int main(int argc, char* argv[]) {
             } else if(res == NB_XFUNC + 2) {
                 // clrline
                 nb_print("\033[2K");
-            } else if(res > NB_XFUNC + 2) {
+            } else if(res == NB_XFUNC + 3) {
+                // time
+                nb_push_num(instance, time(NULL) - startval);
+            } else if(res == NB_XFUNC + 4) {
+                // sleep
+                timeout = time(NULL) + nb_pop_num(instance);
+            } else if(res == NB_XFUNC + 5) {
+                // input
+                char str[80];
+                nb_pop_str(instance, str, 80);
+                nb_print("%s?  ", str);
+                fgets(str, 80, stdin);
+                str[strlen(str)-1] = '\0';
+                nb_push_num(instance, atoi(str));
+            } else if(res == NB_XFUNC + 6) {
+                // input$
+                char str[80];
+                nb_pop_str(instance, str, 80);
+                nb_print("%s?  ", str);
+                fgets(str, 80, stdin);
+                str[strlen(str)-1] = '\0';
+                nb_push_str(instance, str);
+             } else if(res > NB_XFUNC + 6) {
                 nb_print("Unknown external function\n");
             }
         }
