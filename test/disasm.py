@@ -4,7 +4,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 is_active = False
 index = 0
 Opcodes = []
-for line in open("nb_int.h").readlines():
+for line in open("../src/nb_int.h").readlines():
     if "Opcode definitions" in line:
         is_active = True
         continue
@@ -33,14 +33,12 @@ for line in open("output.txt").readlines():
     code = code + line + " "
     
 words = code.split()
-assert words[0] == "BC"
-assert words[1] == "01"
-idx = 2
+idx = 0
 while idx < len(words):
     byte = int(words[idx], 16)
     if byte < len(Opcodes):
         opcode, bytes = Opcodes[byte]
-        print("%04X: %-14s  " % (index, opcode), end="")
+        print("%04X: %-14s %02X " % (index, opcode, byte), end="")
         if bytes == 0:
             bytes = int(words[idx+1], 16) + 1
             idx += 1

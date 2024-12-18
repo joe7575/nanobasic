@@ -141,7 +141,7 @@ void nb_print(const char * format, ...)
         va_start(args, format);
         vsnprintf(buffer, sizeof(buffer), format, args);
         va_end(args);
-        //printf(":%lu: %s", (uint64_t)p_Cpu->screen_buffer, buffer);
+        //printf(":%lu: '%s'\n", (uint64_t)p_Cpu->screen_buffer, buffer);
         //printf("screen_buffer1=>>%s<<", p_Cpu->screen_buffer);
         buffer[MAX_LINE_LEN] = '\0';
         for(int i = 0; i < strlen(buffer); i++) {
@@ -255,7 +255,6 @@ static int run(lua_State *L) {
                     C->ypos = MAX(1, MIN(y, MAX_LINES)) - 1;
                     memset(C->screen_buffer + C->ypos * MAX_LINE_LEN, ' ', MAX_LINE_LEN);
                 } else {
-                    res = res - NB_XFUNC;
                     p_Cpu = NULL;
                     lua_pushinteger(L, res);
                     return 1;
@@ -448,19 +447,18 @@ static int pop_str(lua_State *L) {
         char str[128];
         char *ptr = nb_pop_str(C->pv_vm, str, (uint8_t)sizeof(str));
         if(ptr != NULL) {
-            printf("pop_str %s\n", ptr);
+            lua_pushstring(L, ptr);
             return 1;
         }
     }
     return 0;
 }
 
-static int get_var_num(lua_State *L) {
+static int pop_arr_addr(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
-        char *name = (char *)luaL_checkstring(L, 2);
-        uint16_t res = nb_get_var_num(C->pv_vm, name);
-        lua_pushinteger(L, res);
+        uint16_t addr = nb_pop_arr_addr(C->pv_vm);
+        lua_pushinteger(L, addr);
         return 1;
     }
     return 0;
@@ -559,7 +557,7 @@ static const luaL_Reg R[] = {
     {"push_num",                push_num},
     {"pop_str",                 pop_str},
     {"push_str",                push_str},
-    {"get_var_num",             get_var_num},
+    {"nb_pop_arr_addr",         pop_arr_addr},
     {"read_arr",                read_arr},
     {"write_arr",               write_arr},
     {"hash_node_position",      hash_node_position},
@@ -570,9 +568,9 @@ static const luaL_Reg R[] = {
 /* }====================================================== */
 LUALIB_API int luaopen_nanobasiclib(lua_State *L) {
     nb_init();
-    assert(nb_define_external_function("setcur", 2, (uint8_t[]){NB_NUM, NB_NUM}, NB_NONE) == 0);
-    assert(nb_define_external_function("clrscr", 0, (uint8_t[]){}, NB_NONE) == 1);
-    assert(nb_define_external_function("clrline", 1, (uint8_t[]){NB_NUM}, NB_NONE) == 2);
+    assert(nb_define_external_function("setcur", 2, (uint8_t[]){NB_NUM, NB_NUM}, NB_NONE) == (NB_XFUNC + 0));
+    assert(nb_define_external_function("clrscr", 0, (uint8_t[]){}, NB_NONE) == (NB_XFUNC + 1));
+    assert(nb_define_external_function("clrline", 1, (uint8_t[]){NB_NUM}, NB_NONE) == (NB_XFUNC + 2));
     luaL_newmetatable(L, "nb_cpu");
     luaL_register(L, NULL, R);
     return 1;

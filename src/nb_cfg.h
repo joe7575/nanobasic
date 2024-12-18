@@ -19,7 +19,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 */
 
-#define cfg_LINE_NUMBERS      // enable line numbers (or use labels)
+//#define cfg_LINE_NUMBERS      // enable line numbers (or use labels)
 #define cfg_STRING_SUPPORT     // enable string support
 //#define cfg_BYTE_ACCESS        // enable byte access to strings
 #define cfg_ON_COMMANDS        // enable ON/GOTO/GOSUB commands

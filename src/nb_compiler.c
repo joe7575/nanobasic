@@ -256,7 +256,7 @@ uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *typ
     for(uint8_t i = 0; i < num_params; i++) {
         a_XFuncs[NumXFuncs].type[i] = types[i];
     }
-    return NumXFuncs++;
+    return NB_XFUNC + NumXFuncs++;
 }
 
 void *nb_create(void) {
@@ -353,28 +353,6 @@ uint16_t nb_get_label_address(void *pv_vm, char *name) {
     return 0;
 }   
 
-// return 255 if not found
-uint16_t nb_get_var_num(void *pv_vm, char *name) {
-    (void)pv_vm;
-    char str[MAX_SYM_LEN];
-    // Convert to lower case
-    for(uint16_t i = 0; i < MAX_SYM_LEN; i++) {
-        str[i] = tolower(name[i]);
-        if(name[i] == '\0') {
-            break;
-        }
-    }
-    str[MAX_SYM_LEN - 1] = '\0';
-
-    for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
-        if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL && strcmp(a_Symbol[i].name, str) == 0)
-        {
-            return a_Symbol[i].value;
-        }
-    }
-    return -1;
-}   
-
 /*************************************************************************************************
 ** Static functions
 *************************************************************************************************/
@@ -392,8 +370,12 @@ static bool get_line(void) {
         if(tok == NUM) {
             match(NUM);
             if(Value > 0 && Value < 65536) {
-                Linenum = Value;
-                SymIdx = sym_add(a_Buff, Pc, LABEL);
+                if(Value > Linenum) {
+                    Linenum = Value;
+                    SymIdx = sym_add(a_Buff, Pc, LABEL);
+                } else {
+                    error("line number out of order", NULL);
+                }
             } else {
                 error("line number out of range", NULL);
             }

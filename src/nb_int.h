@@ -67,13 +67,10 @@ enum {
     k_IF_N3,              // (pop val, END address)
     k_READ_NUM_N4,        // (read const value from DATA section)
     k_RESTORE_N2,         // (restore the read pointer)
-#ifdef cfg_ON_COMMANDS
     k_ON_GOTO_N2,         // (on...goto with last number)
     k_ON_GOSUB_N2,        // (on...gosub with last number)
-#endif
     k_SET_ARR_ELEM_N2,    // (set array element)
     k_GET_ARR_ELEM_N2,    // (get array element)
-#ifdef cfg_BYTE_ACCESS    
     k_SET_ARR_1BYTE_N2,   // (array: set one byte)
     k_GET_ARR_1BYTE_N2,   // (array: get one byte)
     k_SET_ARR_2BYTE_N2,   // (array: set one short)
@@ -81,7 +78,6 @@ enum {
     k_SET_ARR_4BYTE_N2,   // (array: set one long)
     k_GET_ARR_4BYTE_N2,   // (array: get one long)
     k_COPY_N1,            // (copy)
-#endif
     k_PARAM_N1,           // (pop and push value)
     k_PARAMS_N1,          // (pop and push string address)
     k_XFUNC_N2,           // (external function call)
@@ -89,7 +85,6 @@ enum {
     k_ERASE_ARR_N2,       // (erase array)
     k_FREE_N1,            // (free memory)
     k_RND_N1,             // (random number)
-#ifdef cfg_STRING_SUPPORT
     k_ADD_STR_N1,         // (add two strings from stack)
     k_STR_EQUAL_N1,       // (compare two values from stack)
     k_STR_NOT_EQU_N1,     // (compare two values from stack)
@@ -105,10 +100,7 @@ enum {
     k_VAL_TO_STR_N1,      // (str$)
     k_VAL_TO_HEX_N1,      // (hex$)
     k_INSTR_N1,           // (instr)
-#endif
-#if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)
     k_ALLOC_STR_N1,       // (alloc string)
-#endif
 };
 
 typedef struct {

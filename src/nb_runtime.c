@@ -100,10 +100,17 @@ void nb_push_str(void *pv_vm, char *str) {
     }
 }
 
-uint16_t nb_read_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes) {
+uint16_t nb_pop_arr_addr(void *pv_vm) {
     t_VM *vm = pv_vm;
-    uint16_t addr = vm->variables[var];
-    if(addr == 0) {
+    if(vm->psp == 0) {
+        return 0;
+    }
+    return (uint16_t)PPOP();
+}
+
+uint16_t nb_read_arr(void *pv_vm, uint16_t addr, uint8_t *arr, uint16_t bytes) {
+    t_VM *vm = pv_vm;
+    if(addr < 0x8000) {
         return 0;
     }
     uint16_t size = nb_mem_get_blocksize(vm, addr);
@@ -115,10 +122,9 @@ uint16_t nb_read_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes) {
     return size;
 }
 
-uint16_t nb_write_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes) {
+uint16_t nb_write_arr(void *pv_vm, uint16_t addr, uint8_t *arr, uint16_t bytes) {
     t_VM *vm = pv_vm;
-    uint16_t addr = vm->variables[var];
-    if(addr == 0) {
+    if(addr < 0x8000) {
         return 0;
     }
     uint16_t size = nb_mem_get_blocksize(vm, addr);

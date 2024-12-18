@@ -87,7 +87,6 @@ void nb_push_str(void *pv_vm, char *str);
 /*
 ** Array access functions
 */
-// provide the name in lower case
-uint16_t nb_get_var_num(void *pv_vm, char *name);
-uint16_t nb_read_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes);
-uint16_t nb_write_arr(void *pv_vm, uint8_t var, uint8_t *arr, uint16_t bytes);
+uint16_t nb_pop_arr_addr(void *pv_vm);
+uint16_t nb_read_arr(void *pv_vm, uint16_t addr, uint8_t *arr, uint16_t bytes);
+uint16_t nb_write_arr(void *pv_vm, uint16_t addr, uint8_t *arr, uint16_t bytes);
