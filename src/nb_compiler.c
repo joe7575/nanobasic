@@ -33,6 +33,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define MAX_SYM_LEN         8
 #define MAX_XFUNC_PARAMS    8
 #define MAX_CODE_PER_LINE   50 // aprox. max. 50 bytes per line
+#define STR_TAG             0x80000000
 
 // Token types
 enum {
@@ -84,29 +85,35 @@ typedef struct {
     uint16_t pos;
 } fwdecl_t;
 
-static void *FilePtr = NULL;
-static fwdecl_t a_ForwardDeclaration[cfg_MAX_FW_DECL] = {0};
-static uint8_t NumFwDecls = 0;
-static xfunc_t a_XFuncs[cfg_MAX_NUM_XFUNC] = {0};
-static uint8_t NumXFuncs = 0;
-static sym_t a_Symbol[cfg_MAX_NUM_SYM] = {0};
-static uint8_t CurrVarIdx = 0;
-static uint8_t *p_Code;
-static uint16_t Pc = 0;
-static uint16_t Linenum = 0;
-static uint16_t ErrCount = 0;
-static uint16_t SymIdx = 0;
-static uint16_t StartOfVars = 0;
-static char a_Line[MAX_LINE_LEN];
-static char a_Buff[MAX_LINE_LEN];
-static char *p_pos = NULL;
-static char *p_next = NULL;
-static uint32_t Value;
-static uint8_t NextTok;
-static uint8_t NestedLoopIdx = 0;
-static bool TraceOn = false;
-static bool FirstDataDeclaration = true;
-static jmp_buf  JmpBuf;
+typedef struct {
+    void    *file_ptr;
+    fwdecl_t a_forward_decl[cfg_MAX_FW_DECL];
+    uint8_t  num_fw_decls;
+    uint8_t *p_code;
+    uint16_t pc;
+    uint16_t linenum;
+    uint16_t err_count;
+    uint16_t sym_idx;
+    char     a_line[MAX_LINE_LEN];
+    char     a_buff[MAX_LINE_LEN];
+    uint32_t a_data[cfg_MAX_NUM_DATA];
+    uint8_t  data_idx;
+    char    *p_pos;
+    char    *p_next;
+    uint32_t value;
+    uint8_t  next_tok;
+    uint8_t  nested_loop_idx;
+    bool     trace_on;
+    bool     first_data_declaration;
+    jmp_buf  jmp_buf;
+} comp_inst_t;
+
+xfunc_t a_XFuncs[cfg_MAX_NUM_XFUNC] = {0};
+uint8_t NumXFuncs = 0;
+sym_t a_Symbol[cfg_MAX_NUM_SYM] = {0};
+uint8_t CurrVarIdx = 0;
+uint16_t StartOfVars = 0;
+comp_inst_t *pCi = NULL;
 
 static bool get_line(void);
 static uint8_t next_token(void);
@@ -164,6 +171,7 @@ static void error(char *err, char *id);
 static uint8_t get_num_vars(void);
 static void forward_declaration(uint16_t idx, uint16_t pos);
 static void resolve_forward_declarations(void);
+static void append_data_to_code(void);
 static type_t compile_expression(type_t type);
 static type_t compile_and_expr(void);
 static type_t compile_not_expr(void);
@@ -271,31 +279,46 @@ void *nb_create(void) {
 
 uint16_t nb_compile(void *pv_vm, void *fp) {
     t_VM *vm = pv_vm;
-    p_Code = vm->code;
+    uint16_t err_count = 0;
+
+    pCi = malloc(sizeof(comp_inst_t));
+    if(pCi == NULL) {
+        printf("Error: out of memory\n");
+        return 1;
+    }
+    memset(pCi, 0, sizeof(comp_inst_t));
+
+    pCi->p_code = vm->code;
     StartOfVars = CurrVarIdx;
     CurrVarIdx = 0;
-    Pc = 0;
-    FilePtr = fp;
-    Linenum = 0;
-    ErrCount = 0;
-    TraceOn = false;
-    FirstDataDeclaration = true;
+    pCi->pc = 0;
+    pCi->file_ptr = fp;
+    pCi->linenum = 0;
+    pCi->err_count = 0;
+    pCi->trace_on = false;
+    pCi->first_data_declaration = true;
 
-    setjmp(JmpBuf);
+    setjmp(pCi->jmp_buf);
     while(get_line()) {
         compile_line();
     }
 
-    if(ErrCount > 0) {
+    if(pCi->err_count > 0) {
         vm->code_size = 0;
-        return ErrCount;
+        free(pCi);
+        pCi = NULL;
+        return pCi->err_count;
     }
 
+    append_data_to_code();
     resolve_forward_declarations();
 
-    vm->code_size = Pc;
+    vm->code_size = pCi->pc;
     vm->num_vars = get_num_vars();
-    return ErrCount;
+    err_count = pCi->err_count;
+    free(pCi);
+    pCi = NULL;
+    return err_count;
 }
 
 void nb_dump_code(void *pv_vm) {
@@ -357,22 +380,22 @@ uint16_t nb_get_label_address(void *pv_vm, char *name) {
 ** Static functions
 *************************************************************************************************/
 static bool get_line(void) {
-    if(nb_get_code_line(FilePtr, a_Line, MAX_LINE_LEN) != NULL) {
-        if(strlen(a_Line) > (MAX_LINE_LEN - 2)) {
+    if(nb_get_code_line(pCi->file_ptr, pCi->a_line, MAX_LINE_LEN) != NULL) {
+        if(strlen(pCi->a_line) > (MAX_LINE_LEN - 2)) {
             error("line too long", NULL);
         }
-        p_pos = p_next = a_Line;
+        pCi->p_pos = pCi->p_next = pCi->a_line;
 
 #ifndef cfg_LINE_NUMBERS        
-        Linenum++;
+        pCi->linenum++;
 #else
         uint8_t tok = lookahead();
         if(tok == NUM) {
             match(NUM);
-            if(Value > 0 && Value < 65536) {
-                if(Value > Linenum) {
-                    Linenum = Value;
-                    SymIdx = sym_add(a_Buff, Pc, LABEL);
+            if(pCi->value > 0 && pCi->value < 65536) {
+                if(pCi->value > pCi->linenum) {
+                    pCi->linenum = pCi->value;
+                    pCi->sym_idx = sym_add(pCi->a_buff, pCi->pc, LABEL);
                 } else {
                     error("line number out of order", NULL);
                 }
@@ -387,72 +410,72 @@ static bool get_line(void) {
 }
 
 static uint8_t next_token(void) {
-    if(p_pos == NULL || *p_pos == '\0') {
+    if(pCi->p_pos == NULL || *pCi->p_pos == '\0') {
         return 0; // End of line
     }
-    p_next = nb_scanner(p_pos, a_Buff);
-    if(a_Buff[0] == '\0') {
+    pCi->p_next = nb_scanner(pCi->p_pos, pCi->a_buff);
+    if(pCi->a_buff[0] == '\0') {
        return 0; // End of line
     }
-    if(a_Buff[0] == '\"') {
+    if(pCi->a_buff[0] == '\"') {
         return STR;
     }
-    if(isdigit(a_Buff[0])) {
-        Value = atoi(a_Buff);
+    if(isdigit(pCi->a_buff[0])) {
+        pCi->value = atoi(pCi->a_buff);
        return NUM;
     }
-    if(isalpha(a_Buff[0])) {
-        uint16_t len = strlen(a_Buff);
-        uint8_t type = a_Buff[len - 1] == '$' ? SID : ID;
+    if(isalpha(pCi->a_buff[0])) {
+        uint16_t len = strlen(pCi->a_buff);
+        uint8_t type = pCi->a_buff[len - 1] == '$' ? SID : ID;
 
-        SymIdx = sym_add(a_Buff, CurrVarIdx, type);
-        return a_Symbol[SymIdx].type;
+        pCi->sym_idx = sym_add(pCi->a_buff, CurrVarIdx, type);
+        return a_Symbol[pCi->sym_idx].type;
     }
-    if(a_Buff[0] == '=') {
+    if(pCi->a_buff[0] == '=') {
         return EQ;
     }
-    if(a_Buff[0] == '<') {
+    if(pCi->a_buff[0] == '<') {
         // parse '<=' or '<'
-        if (a_Buff[1] == '=') {
+        if (pCi->a_buff[1] == '=') {
             return LQ;
         }
         return LE;
     }
-    if(a_Buff[0] == '>') {
+    if(pCi->a_buff[0] == '>') {
         // parse '>=' or '>'
-        if (a_Buff[0] == '=') {
+        if (pCi->a_buff[0] == '=') {
             return GQ;
         }
         return GR;
     }
-    if(strlen(a_Buff) == 1) {
-        return a_Buff[0]; // Single character
+    if(strlen(pCi->a_buff) == 1) {
+        return pCi->a_buff[0]; // Single character
     }
-    error("unknown character", a_Buff);
+    error("unknown character", pCi->a_buff);
     return 0;
 }
 
 static uint8_t lookahead(void) {
-    if(p_pos == p_next) {
-       NextTok = next_token();
+    if(pCi->p_pos == pCi->p_next) {
+       pCi->next_tok = next_token();
     }
-    //nb_print("lookahead: %s\n", a_Buff);
-    return NextTok;
+    //nb_print("lookahead: %s\n", pCi->a_buff);
+    return pCi->next_tok;
 }
 
 static uint8_t next(void) {
-    if(p_pos == p_next) {
-       NextTok = next_token();
+    if(pCi->p_pos == pCi->p_next) {
+       pCi->next_tok = next_token();
     }
-    p_pos = p_next;
-    return NextTok;
+    pCi->p_pos = pCi->p_next;
+    return pCi->next_tok;
 }
 
 static void match(uint8_t expected) {
     uint8_t tok = next();
     if (tok == expected) {
     } else {
-        error("syntax error", a_Buff);
+        error("syntax error", pCi->a_buff);
     }
 }
 
@@ -461,13 +484,13 @@ static void label(void) {
   uint8_t tok = lookahead();
   if(tok == ID) { // Token recognized as variable?
     // Convert to label
-    a_Symbol[SymIdx].type = LABEL;
-    NextTok = LABEL;
+    a_Symbol[pCi->sym_idx].type = LABEL;
+    pCi->next_tok = LABEL;
     CurrVarIdx--;
   } else if(tok == LABEL) {
     // Already a label
   } else {
-    error("label expected", a_Buff);
+    error("label expected", pCi->a_buff);
   }
   match(LABEL);
 }
@@ -477,17 +500,17 @@ static void compile_line(void) {
 #ifndef cfg_LINE_NUMBERS    
     uint8_t tok = lookahead();
     if(tok == ID || tok == LABEL) {
-        uint16_t idx = SymIdx;
+        uint16_t idx = pCi->sym_idx;
         tok = lookahead();
         if(tok == ':') {
             label();
             match(':');
-            a_Symbol[idx].value = Pc;
+            a_Symbol[idx].value = pCi->pc;
         }
     }
 #endif
-    if(TraceOn) {
-        debug_print(Linenum);
+    if(pCi->trace_on) {
+        debug_print(pCi->linenum);
     }
     compile_stmts();
 }
@@ -501,7 +524,7 @@ static void compile_stmts(void) {
             match(':');
             tok = lookahead();
         }
-        if(Pc >= cfg_MAX_CODE_SIZE - MAX_CODE_PER_LINE) {
+        if(pCi->pc >= cfg_MAX_CODE_SIZE - MAX_CODE_PER_LINE) {
             error("code size exceeded", NULL);
             break;
         }
@@ -510,7 +533,7 @@ static void compile_stmts(void) {
 
 static void compile_stmt(void) {
     uint8_t tok = next();
-    if(FirstDataDeclaration == false && tok != DATA) {
+    if(pCi->first_data_declaration == false && tok != DATA) {
         error("data statement expected", NULL);
     }
     switch(tok) {
@@ -551,7 +574,7 @@ static void compile_stmt(void) {
     case TRON: compile_tron(); break;
     case TROFF: compile_troff(); break;
     case FREE: compile_free(); break;
-    default: error("syntax error", a_Buff); break;
+    default: error("syntax error", pCi->a_buff); break;
     }
 }
 
@@ -566,17 +589,17 @@ static void compile_for(void) {
     uint8_t tok;
     uint16_t idx;
 
-    if(++NestedLoopIdx >= cfg_MAX_FOR_LOOPS) {
+    if(++pCi->nested_loop_idx >= cfg_MAX_FOR_LOOPS) {
         error("too many nested 'for/while' loops", NULL);
     }
 
     // FOR ID
     match(ID);
-    idx = SymIdx;
+    idx = pCi->sym_idx;
     match(EQ);
     compile_expression(e_NUM);
-    p_Code[Pc++] = k_POP_VAR_N2;
-    p_Code[Pc++] = a_Symbol[idx].value;
+    pCi->p_code[pCi->pc++] = k_POP_VAR_N2;
+    pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
     match(TO);
     compile_expression(e_NUM);
     tok = lookahead();
@@ -584,11 +607,11 @@ static void compile_for(void) {
         match(STEP);
         compile_expression(e_NUM);
     } else {
-        p_Code[Pc++] = k_PUSH_NUM_N2;
-        p_Code[Pc++] = 1;
+        pCi->p_code[pCi->pc++] = k_PUSH_NUM_N2;
+        pCi->p_code[pCi->pc++] = 1;
     }
 
-    pc = Pc;
+    pc = pCi->pc;
     while(get_line()) {
         tok = lookahead();
         if(tok == NEXT) {
@@ -602,15 +625,15 @@ static void compile_for(void) {
     tok = lookahead();
     if(tok == ID) {
         match(ID);
-        if(idx != SymIdx) {
+        if(idx != pCi->sym_idx) {
             error("mismatched 'for' and 'next'", NULL);
         }
     }
-    p_Code[Pc++] = k_NEXT_N4;
-    p_Code[Pc++] = pc & 0xFF;
-    p_Code[Pc++] = (pc >> 8) & 0xFF;
-    p_Code[Pc++] = a_Symbol[idx].value;
-    NestedLoopIdx--;
+    pCi->p_code[pCi->pc++] = k_NEXT_N4;
+    pCi->p_code[pCi->pc++] = pc & 0xFF;
+    pCi->p_code[pCi->pc++] = (pc >> 8) & 0xFF;
+    pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
+    pCi->nested_loop_idx--;
 }
 
 #ifdef cfg_BASIC_V2
@@ -624,15 +647,15 @@ static void compile_while(void) {
     uint16_t pos1, pos2;
     uint8_t tok;
 
-    if(++NestedLoopIdx >= cfg_MAX_FOR_LOOPS) {
+    if(++pCi->nested_loop_idx >= cfg_MAX_FOR_LOOPS) {
         error("too many nested 'for/while' loops", NULL);
     }
 
-    pos1 = Pc;
+    pos1 = pCi->pc;
     compile_expression(e_NUM);
-    p_Code[Pc++] = k_IF_N3;
-    pos2 = Pc;
-    Pc += 2;
+    pCi->p_code[pCi->pc++] = k_IF_N3;
+    pos2 = pCi->pc;
+    pCi->pc += 2;
     while(get_line()) {
         tok = lookahead();
         if(tok == END) {
@@ -641,11 +664,11 @@ static void compile_while(void) {
         compile_line();
     }
     match(END);
-    p_Code[Pc++] = k_GOTO_N3;
-    p_Code[Pc++] = pos1 & 0xFF;
-    p_Code[Pc++] = (pos1 >> 8) & 0xFF;
-    ACS16(p_Code[pos2]) = Pc;
-    NestedLoopIdx--;
+    pCi->p_code[pCi->pc++] = k_GOTO_N3;
+    pCi->p_code[pCi->pc++] = pos1 & 0xFF;
+    pCi->p_code[pCi->pc++] = (pos1 >> 8) & 0xFF;
+    ACS16(pCi->p_code[pos2]) = pCi->pc;
+    pCi->nested_loop_idx--;
 }
 
 /*
@@ -663,9 +686,9 @@ static void compile_if(void) {
     uint16_t pos2; // ifend
 
     compile_expression(e_NUM);
-    p_Code[Pc++] = k_IF_N3;
-    pos1 = Pc;
-    Pc += 2;
+    pCi->p_code[pCi->pc++] = k_IF_N3;
+    pos1 = pCi->pc;
+    pCi->pc += 2;
     tok = lookahead();
     match(THEN);
 
@@ -678,10 +701,10 @@ static void compile_if(void) {
     }
 
     if(tok == ELSE) {
-        p_Code[Pc++] = k_GOTO_N3;
-        pos2 = Pc;
-        Pc += 2;
-        ACS16(p_Code[pos1]) = Pc;
+        pCi->p_code[pCi->pc++] = k_GOTO_N3;
+        pos2 = pCi->pc;
+        pCi->pc += 2;
+        ACS16(pCi->p_code[pos1]) = pCi->pc;
 
         while(get_line()) {
             tok = lookahead();
@@ -691,9 +714,9 @@ static void compile_if(void) {
             compile_line();
         }
 
-        ACS16(p_Code[pos2]) = Pc;
+        ACS16(pCi->p_code[pos2]) = pCi->pc;
     } else {
-        ACS16(p_Code[pos1]) = Pc;
+        ACS16(pCi->p_code[pos1]) = pCi->pc;
     }
     match(END);
 }
@@ -702,30 +725,30 @@ static void compile_if(void) {
     uint8_t tok;
 
     compile_expression(e_NUM);
-    p_Code[Pc++] = k_IF_N3;
-    uint16_t pos = Pc;
-    Pc += 2;
+    pCi->p_code[pCi->pc++] = k_IF_N3;
+    uint16_t pos = pCi->pc;
+    pCi->pc += 2;
     tok = lookahead();
     if(tok == THEN) {
         match(THEN);
         compile_stmts();
-        ACS16(p_Code[pos]) = Pc;
+        ACS16(pCi->p_code[pos]) = pCi->pc;
     } else if(tok == GOTO) {
         match(GOTO);
         compile_goto();
-        ACS16(p_Code[pos]) = Pc;
+        ACS16(pCi->p_code[pos]) = pCi->pc;
     } else {
-        error("THEN or GOTO expected", a_Buff);
+        error("THEN or GOTO expected", pCi->a_buff);
     }
     tok = lookahead();
     if(tok == ELSE) {
         match(ELSE);
-        p_Code[Pc++] = k_GOTO_N3; // goto END
-        ACS16(p_Code[pos]) = Pc + 2;
-        pos = Pc;
-        Pc += 2;
+        pCi->p_code[pCi->pc++] = k_GOTO_N3; // goto END
+        ACS16(pCi->p_code[pos]) = pCi->pc + 2;
+        pos = pCi->pc;
+        pCi->pc += 2;
         compile_stmts();
-        ACS16(p_Code[pos]) = Pc;
+        ACS16(pCi->p_code[pos]) = pCi->pc;
     }
 }
 #endif
@@ -734,61 +757,61 @@ static void compile_goto(void) {
     uint16_t addr;
 #ifdef cfg_LINE_NUMBERS
     match(NUM);
-    SymIdx = sym_add(a_Buff, 0, LABEL);
+    pCi->sym_idx = sym_add(pCi->a_buff, 0, LABEL);
     addr = 0;
 #else
     label();
-    addr = a_Symbol[SymIdx].value;
+    addr = a_Symbol[pCi->sym_idx].value;
 #endif
-    forward_declaration(SymIdx, Pc + 1);
-    p_Code[Pc++] = k_GOTO_N3;
-    p_Code[Pc++] = addr & 0xFF;
-    p_Code[Pc++] = (addr >> 8) & 0xFF;
+    forward_declaration(pCi->sym_idx, pCi->pc + 1);
+    pCi->p_code[pCi->pc++] = k_GOTO_N3;
+    pCi->p_code[pCi->pc++] = addr & 0xFF;
+    pCi->p_code[pCi->pc++] = (addr >> 8) & 0xFF;
 }
 
 static void compile_gosub(void) {
     uint16_t addr;
 #ifdef cfg_LINE_NUMBERS
     match(NUM);
-    SymIdx = sym_add(a_Buff, 0, LABEL);
+    pCi->sym_idx = sym_add(pCi->a_buff, 0, LABEL);
     addr = 0;
 #else
     label();
-    addr = a_Symbol[SymIdx].value;
+    addr = a_Symbol[pCi->sym_idx].value;
 #endif
-    forward_declaration(SymIdx, Pc + 1);
-    p_Code[Pc++] = k_GOSUB_N3;
-    p_Code[Pc++] = addr & 0xFF;
-    p_Code[Pc++] = (addr >> 8) & 0xFF;
+    forward_declaration(pCi->sym_idx, pCi->pc + 1);
+    pCi->p_code[pCi->pc++] = k_GOSUB_N3;
+    pCi->p_code[pCi->pc++] = addr & 0xFF;
+    pCi->p_code[pCi->pc++] = (addr >> 8) & 0xFF;
 }
 
 static void compile_return(void) {
-    p_Code[Pc++] = k_RETURN_N1;
+    pCi->p_code[pCi->pc++] = k_RETURN_N1;
 }
 
 static void compile_var(uint8_t tok) {
-    uint16_t idx = SymIdx;
+    uint16_t idx = pCi->sym_idx;
     type_t type;
 
     if(tok == SID) { // let a$ = "string"
         match(EQ);
         compile_expression(e_STR);
         // Var[value] = pop()
-        p_Code[Pc++] = k_POP_STR_N2;
-        p_Code[Pc++] = a_Symbol[idx].value;
+        pCi->p_code[pCi->pc++] = k_POP_STR_N2;
+        pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
     } else if(tok == ID) { // let a = expression
         match(EQ);
         type = compile_expression(e_ANY);
         if(type == e_NUM) {
             // Var[value] = pop()
-            p_Code[Pc++] = k_POP_VAR_N2;
-            p_Code[Pc++] = a_Symbol[idx].value;
+            pCi->p_code[pCi->pc++] = k_POP_VAR_N2;
+            pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
         } else if(type == e_STR) {
             // Var[value] = pop()
-            p_Code[Pc++] = k_POP_STR_N2;
-            p_Code[Pc++] = a_Symbol[idx].value;
+            pCi->p_code[pCi->pc++] = k_POP_STR_N2;
+            pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
         } else {
-            error("type mismatch", a_Buff);
+            error("type mismatch", pCi->a_buff);
         }
     } else if(tok == ARR) { // let rx(0) = 1
         match('(');
@@ -796,31 +819,31 @@ static void compile_var(uint8_t tok) {
         match(')');
         match(EQ);
         compile_expression(e_NUM);
-        p_Code[Pc++] = k_SET_ARR_ELEM_N2;
-        p_Code[Pc++] = a_Symbol[idx].value;
+        pCi->p_code[pCi->pc++] = k_SET_ARR_ELEM_N2;
+        pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
     } else {
-        error("unknown variable type", a_Buff);
+        error("unknown variable type", pCi->a_buff);
     }
 }
 
 static void compile_dim(void) {
     uint8_t tok = next();
     if(tok == ID || tok == ARR) {
-        uint16_t idx = SymIdx;
+        uint16_t idx = pCi->sym_idx;
         a_Symbol[idx].type = ARR;
         match('(');
         compile_expression(e_NUM);        
         match(')');
-        p_Code[Pc++] = k_DIM_ARR_N2;
-        p_Code[Pc++] = a_Symbol[idx].value;
+        pCi->p_code[pCi->pc++] = k_DIM_ARR_N2;
+        pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
     } else {
-        error("unknown variable type", a_Buff);
+        error("unknown variable type", pCi->a_buff);
     }
 }
 
 static void remark(void) {
     // Skip to end of line
-    p_pos[0] = '\0';
+    pCi->p_pos[0] = '\0';
 }
 
 static void compile_print(void) {
@@ -828,38 +851,38 @@ static void compile_print(void) {
     bool add_newline = true;
     uint8_t tok = lookahead();
     if(tok == 0) {
-        p_Code[Pc++] = k_PRINT_NEWL_N1;
+        pCi->p_code[pCi->pc++] = k_PRINT_NEWL_N1;
         return;
     }
     while(tok && tok != ELSE) {
         add_newline = true;
         if(tok == STR) {
             compile_string();
-            p_Code[Pc++] = k_PRINT_STR_N1;
+            pCi->p_code[pCi->pc++] = k_PRINT_STR_N1;
         } else if(tok == SID) {
-            p_Code[Pc++] = k_PUSH_VAR_N2;
-            p_Code[Pc++] = a_Symbol[SymIdx].value;
-            p_Code[Pc++] = k_PRINT_STR_N1;
+            pCi->p_code[pCi->pc++] = k_PUSH_VAR_N2;
+            pCi->p_code[pCi->pc++] = a_Symbol[pCi->sym_idx].value;
+            pCi->p_code[pCi->pc++] = k_PRINT_STR_N1;
             match(SID);
         } else if(tok == SPC) { // spc function
             match('(');
             compile_expression(e_NUM);
             match(')');
-            p_Code[Pc++] = k_PRINT_BLANKS_N1;
+            pCi->p_code[pCi->pc++] = k_PRINT_BLANKS_N1;
         } else {
             type = compile_expression(e_ANY);
             if(type == e_NUM) {
-                p_Code[Pc++] = k_PRINT_VAL_N1;
+                pCi->p_code[pCi->pc++] = k_PRINT_VAL_N1;
             } else if(type == e_STR) {
-                p_Code[Pc++] = k_PRINT_STR_N1;
+                pCi->p_code[pCi->pc++] = k_PRINT_STR_N1;
             } else {
-                error("type mismatch", a_Buff);
+                error("type mismatch", pCi->a_buff);
             }
         }
         tok = lookahead();
         if(tok == ',') {
             match(',');
-            p_Code[Pc++] = k_PRINT_TAB_N1;
+            pCi->p_code[pCi->pc++] = k_PRINT_TAB_N1;
             add_newline = false;
             tok = lookahead();
         } else if(tok == ';') {
@@ -867,52 +890,53 @@ static void compile_print(void) {
             tok = lookahead();
             add_newline = false;
         } else if(tok && tok != ELSE) {
-            p_Code[Pc++] = k_PRINT_SPACE_N1;
+            pCi->p_code[pCi->pc++] = k_PRINT_SPACE_N1;
         }
     }
     if(add_newline) {
-        p_Code[Pc++] = k_PRINT_NEWL_N1;
+        pCi->p_code[pCi->pc++] = k_PRINT_NEWL_N1;
     }
 }
 
 static void debug_print(uint16_t lineno) {
-    p_Code[Pc++] = k_PRINT_LINENO_N3;
-    p_Code[Pc++] = lineno & 0xFF;
-    p_Code[Pc++] = (lineno >> 8) & 0xFF;
+    pCi->p_code[pCi->pc++] = k_PRINT_LINENO_N3;
+    pCi->p_code[pCi->pc++] = lineno & 0xFF;
+    pCi->p_code[pCi->pc++] = (lineno >> 8) & 0xFF;
 }
 
 static void compile_string(void) {
     match(STR);
     // push string address
-    uint16_t len = strlen(a_Buff);
-    a_Buff[len - 1] = '\0';
-    p_Code[Pc++] = k_PUSH_STR_Nx;
-    p_Code[Pc++] = len - 1; // without quotes but with 0
-    strcpy((char*)&p_Code[Pc], a_Buff + 1);
-    Pc += len - 1;
+    uint16_t len = strlen(pCi->a_buff);
+    pCi->a_buff[len - 1] = '\0';
+    pCi->p_code[pCi->pc++] = k_PUSH_STR_Nx;
+    pCi->p_code[pCi->pc++] = len - 1; // without quotes but with 0
+    strcpy((char*)&pCi->p_code[pCi->pc], pCi->a_buff + 1);
+    pCi->pc += len - 1;
 }
 
 static void compile_data(void) {
     uint8_t tok;
-    if(FirstDataDeclaration) {
-        FirstDataDeclaration = false;
-        uint16_t idx = sym_add("@data", CurrVarIdx, ID);
-        a_Symbol[idx].value = Pc;
+    if(pCi->first_data_declaration) {
+        pCi->first_data_declaration = false;
     }
     
     while(1) {
         tok = next();
         if(tok == NUM) {
-            ACS32(p_Code[Pc]) = Value;
-            Pc += 4;
+            pCi->a_data[pCi->data_idx++] = pCi->value & ~STR_TAG;
         } else if(tok == STR) {
-            uint16_t len = strlen(a_Buff);
-            a_Buff[len - 1] = '\0';
-            p_Code[Pc++] = len - 1; // without quotes but with 0
-            strcpy((char*)&p_Code[Pc], a_Buff + 1);
-            Pc += len - 1;
+            // without quotes but with 0
+            uint16_t len = strlen(pCi->a_buff) - 1;
+            pCi->a_buff[len] = '\0';
+            if(pCi->pc + len >= cfg_MAX_CODE_SIZE) {
+                error("code size exceeded", NULL);
+            }
+            memcpy(&pCi->p_code[pCi->pc], pCi->a_buff + 1, len);
+            pCi->a_data[pCi->data_idx++] = pCi->pc | STR_TAG;
+            pCi->pc += len;
         } else {
-            error("syntax error", a_Buff);
+            error("syntax error", pCi->a_buff);
         }
         tok = lookahead();
         if(tok == ',') {
@@ -928,15 +952,28 @@ static void compile_read(void) {
     uint16_t idx1, idx2;
 
     while(1) {
-        match(ID);
-        idx1 = SymIdx;
-        idx2 = sym_add("@data", CurrVarIdx, ID);
-        p_Code[Pc++] = k_READ_NUM_N4;
-        p_Code[Pc++] = a_Symbol[idx2].value;
-        forward_declaration(idx2, Pc);
-        Pc += 2;
-        p_Code[Pc++] = k_POP_VAR_N2;
-        p_Code[Pc++] = a_Symbol[idx1].value;
+        tok = lookahead();
+        if(tok == ID) {
+            match(ID);
+            idx1 = pCi->sym_idx;
+            idx2 = sym_add("@data", CurrVarIdx, ID);
+            pCi->p_code[pCi->pc++] = k_READ_NUM_N4;
+            pCi->p_code[pCi->pc++] = a_Symbol[idx2].value;
+            forward_declaration(idx2, pCi->pc);
+            pCi->pc += 2;
+            pCi->p_code[pCi->pc++] = k_POP_VAR_N2;
+            pCi->p_code[pCi->pc++] = a_Symbol[idx1].value;
+        } else if(tok == SID) {
+            match(SID);
+            idx1 = pCi->sym_idx;
+            idx2 = sym_add("@data", CurrVarIdx, SID);
+            pCi->p_code[pCi->pc++] = k_READ_STR_N4;
+            pCi->p_code[pCi->pc++] = a_Symbol[idx2].value;
+            forward_declaration(idx2, pCi->pc);
+            pCi->pc += 2;
+            pCi->p_code[pCi->pc++] = k_POP_STR_N2;
+            pCi->p_code[pCi->pc++] = a_Symbol[idx1].value;
+        }
         tok = lookahead();
         if(tok == ',') {
             match(',');
@@ -951,43 +988,43 @@ static void compile_restore(void) {
     match('(');
     compile_expression(e_NUM);
     match(')');
-    p_Code[Pc++] = k_RESTORE_N2;
-    p_Code[Pc++] = a_Symbol[idx].value;
+    pCi->p_code[pCi->pc++] = k_RESTORE_N2;
+    pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
 }
 
 #ifdef cfg_BASIC_V2
 static void compile_exit(void) {
-    p_Code[Pc++] = k_END;
+    pCi->p_code[pCi->pc++] = k_END;
 }
 #else
 static void compile_end(void) {
-    p_Code[Pc++] = k_END;
+    pCi->p_code[pCi->pc++] = k_END;
 }
 #endif
 
 static type_t compile_xfunc(void) {
-    uint8_t idx = sym_get(a_Buff);
+    uint8_t idx = sym_get(pCi->a_buff);
     uint8_t tok;
     if(idx >= NumXFuncs) {
-        error("unknown external function", a_Buff);
+        error("unknown external function", pCi->a_buff);
     }
     match('(');
     for(uint8_t i = 0; i < a_XFuncs[idx].num_params; i++) {
         compile_expression(a_XFuncs[idx].type[i]);
-        p_Code[Pc++] = k_PUSH_PARAM_N1;
+        pCi->p_code[pCi->pc++] = k_PUSH_PARAM_N1;
         tok = lookahead();
         if(tok == ',') {
             match(',');
         }
     }
-    p_Code[Pc++] = k_XFUNC_N2;
-    p_Code[Pc++] = idx;
+    pCi->p_code[pCi->pc++] = k_XFUNC_N2;
+    pCi->p_code[pCi->pc++] = idx;
     match(')');
     return a_XFuncs[idx].return_type;
 }
 
 static void compile_break(void) {
-    p_Code[Pc++] = k_BREAK_INSTR_N1;
+    pCi->p_code[pCi->pc++] = k_BREAK_INSTR_N1;
 }
 
 #ifdef cfg_BYTE_ACCESS
@@ -1015,21 +1052,21 @@ static void compile_copy(void) {
     match(',');
     compile_expression(e_NUM);
     match(')');
-    p_Code[Pc++] = k_COPY_N1;
+    pCi->p_code[pCi->pc++] = k_COPY_N1;
 }
 
 static void compile_set(uint8_t instr) {
     uint8_t idx;
     match('(');
     match(SID);
-    idx = SymIdx;
+    idx = pCi->sym_idx;
     match(',');
     compile_expression(e_NUM);
     match(',');
     compile_expression(e_NUM);
     match(')');
-    p_Code[Pc++] = instr;
-    p_Code[Pc++] = a_Symbol[idx].value;
+    pCi->p_code[pCi->pc++] = instr;
+    pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
 }
 
 static void compile_get(uint8_t tok, uint8_t instr) {
@@ -1037,33 +1074,33 @@ static void compile_get(uint8_t tok, uint8_t instr) {
     match(tok);
     match('(');
     match(SID);
-    idx = SymIdx;
+    idx = pCi->sym_idx;
     match(',');
     compile_expression(e_NUM);
     match(')');
-    p_Code[Pc++] = instr;
-    p_Code[Pc++] = a_Symbol[idx].value;
+    pCi->p_code[pCi->pc++] = instr;
+    pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
 }
 #endif
 
 #ifdef cfg_BASIC_V2
 static void compile_const(void) {
     next();
-    uint16_t idx = SymIdx;
+    uint16_t idx = pCi->sym_idx;
     match(EQ);
     match(NUM);
     a_Symbol[idx].type = e_CNST;
-    a_Symbol[idx].value = Value;
+    a_Symbol[idx].value = pCi->value;
 }
 #endif
 
 static void compile_erase(void) {
     uint8_t tok = next();
     if(tok == SID || tok == ARR) {
-        p_Code[Pc++] = k_ERASE_ARR_N2;
-        p_Code[Pc++] = a_Symbol[SymIdx].value;
+        pCi->p_code[pCi->pc++] = k_ERASE_ARR_N2;
+        pCi->p_code[pCi->pc++] = a_Symbol[pCi->sym_idx].value;
     } else {
-        error("unknown variable type", a_Buff);
+        error("unknown variable type", pCi->a_buff);
     }
 }
 
@@ -1076,17 +1113,17 @@ static void compile_on(void) {
     uint8_t tok = lookahead();
     if(tok == GOSUB) {
         match(GOSUB);
-        p_Code[Pc++] = k_ON_GOSUB_N2;
+        pCi->p_code[pCi->pc++] = k_ON_GOSUB_N2;
     } else if(tok == GOTO) {
         match(GOTO);
-        p_Code[Pc++] = k_ON_GOTO_N2;
+        pCi->p_code[pCi->pc++] = k_ON_GOTO_N2;
     } else {
-        error("GOSUB or GOTO expected", a_Buff);
+        error("GOSUB or GOTO expected", pCi->a_buff);
     }
-    pos = Pc;
-    p_Code[Pc++] = 0; // number of elements
+    pos = pCi->pc;
+    pCi->p_code[pCi->pc++] = 0; // number of elements
     num = list_of_numbers();
-    p_Code[pos] = num;
+    pCi->p_code[pos] = num;
 }
 
 static uint8_t list_of_numbers(void) {
@@ -1107,17 +1144,17 @@ static uint8_t list_of_numbers(void) {
 #endif
 
 static void compile_tron(void) {
-    TraceOn = true;
+    pCi->trace_on = true;
 }
 
 static void compile_troff(void) {
-    TraceOn = false;
+    pCi->trace_on = false;
 }
 
 static void compile_free(void) {
     match('(');
     match(')');
-    p_Code[Pc++] = k_FREE_N1;
+    pCi->p_code[pCi->pc++] = k_FREE_N1;
 }
 
 /**************************************************************************************************
@@ -1197,18 +1234,18 @@ static uint16_t sym_get(char *id) {
 }
 
 static void error(char *err, char *id) {
-    nb_print("Error in line %u: ", Linenum);
+    nb_print("Error in line %u: ", pCi->linenum);
     if(id != NULL && id[0] != '\0') {
         nb_print("%s at '%s'\n", err, id);
     } else {
         nb_print("%s\n", err);
     }
-    ErrCount++;
-    p_pos = p_next;
-    if(p_pos != NULL) {
-        p_pos[0] = '\0';
+    pCi->err_count++;
+    pCi->p_pos = pCi->p_next;
+    if(pCi->p_pos != NULL) {
+        pCi->p_pos[0] = '\0';
     }
-    longjmp(JmpBuf, 0);
+    longjmp(pCi->jmp_buf, 0);
 }
 
 static uint8_t get_num_vars(void) {
@@ -1226,10 +1263,10 @@ static uint8_t get_num_vars(void) {
 // idx = index of symbol (SmyIdx)
 // pos = position in code array
 static void forward_declaration(uint16_t idx, uint16_t pos) {
-    if(NumFwDecls < cfg_MAX_FW_DECL) {
-        a_ForwardDeclaration[NumFwDecls].idx = idx;
-        a_ForwardDeclaration[NumFwDecls].pos = pos;
-        NumFwDecls++;
+    if(pCi->num_fw_decls < cfg_MAX_FW_DECL) {
+        pCi->a_forward_decl[pCi->num_fw_decls].idx = idx;
+        pCi->a_forward_decl[pCi->num_fw_decls].pos = pos;
+        pCi->num_fw_decls++;
     } else {
         error("too many forward declarations", NULL);
     }
@@ -1237,14 +1274,28 @@ static void forward_declaration(uint16_t idx, uint16_t pos) {
 
 static void resolve_forward_declarations(void) {
     uint16_t idx, pos, addr;
-    for(uint8_t i = 0; i < NumFwDecls; i++) {
-        idx = a_ForwardDeclaration[i].idx;
-        pos = a_ForwardDeclaration[i].pos;
+    for(uint8_t i = 0; i < pCi->num_fw_decls; i++) {
+        idx = pCi->a_forward_decl[i].idx;
+        pos = pCi->a_forward_decl[i].pos;
         addr = a_Symbol[idx].value;
-        p_Code[pos + 0] = addr & 0xFF;
-        p_Code[pos + 1] = (addr >> 8) & 0xFF;
+        pCi->p_code[pos + 0] = addr & 0xFF;
+        pCi->p_code[pos + 1] = (addr >> 8) & 0xFF;
     }
-    NumFwDecls = 0;
+    pCi->num_fw_decls = 0;
+}
+
+static void append_data_to_code(void) {
+    if((pCi->pc + pCi->data_idx * 4) >= cfg_MAX_CODE_SIZE) {
+        error("code size exceeded", NULL);
+    }
+
+    uint16_t idx = sym_add("@data", 0, ID);
+    a_Symbol[idx].value = pCi->pc;
+
+    for(int i = 0; i < pCi->data_idx; i++) {
+        ACS32(pCi->p_code[pCi->pc]) = pCi->a_data[i];
+        pCi->pc += 4;
+    }
 }
 
 /**************************************************************************************************
@@ -1259,11 +1310,11 @@ static type_t compile_expression(type_t type) {
         if(type1 != e_NUM || type2 != e_NUM) {
             error("type mismatch", NULL);
         }
-        p_Code[Pc++] = k_OR_N1;
+        pCi->p_code[pCi->pc++] = k_OR_N1;
         op = lookahead();
     }
     if(type != e_ANY && type1 != type) {
-        error("type mismatch", a_Buff);
+        error("type mismatch", pCi->a_buff);
     }
     return type1;
 }
@@ -1275,9 +1326,9 @@ static type_t compile_and_expr(void) {
         match(op);
         type_t type2 = compile_not_expr();
         if(type1 != e_NUM || type2 != e_NUM) {
-            error("type mismatch", a_Buff);
+            error("type mismatch", pCi->a_buff);
         }
-        p_Code[Pc++] = k_AND_N1;
+        pCi->p_code[pCi->pc++] = k_AND_N1;
         op = lookahead();
     }
     return type1;
@@ -1290,9 +1341,9 @@ static type_t compile_not_expr(void) {
         match(op);
         type = compile_comp_expr();
         if(type != e_NUM) {
-            error("type mismatch", a_Buff);
+            error("type mismatch", pCi->a_buff);
         }
-          p_Code[Pc++] = k_NOT_N1;
+          pCi->p_code[pCi->pc++] = k_NOT_N1;
     } else {
         type = compile_comp_expr();
     }
@@ -1306,31 +1357,31 @@ static type_t compile_comp_expr(void) {
         match(op);
         type_t type2 = compile_add_expr();
         if(type1 != type2) {
-            error("type mismatch", a_Buff);
+            error("type mismatch", pCi->a_buff);
         }
 #ifdef cfg_STRING_SUPPORT        
         if(type1 == e_STR) {
             switch(op) {
-            case EQ: p_Code[Pc++] = k_STR_EQUAL_N1; break;
-            case NQ: p_Code[Pc++] = k_STR_NOT_EQU_N1; break;
-            case LE: p_Code[Pc++] = k_STR_LESS_N1; break;
-            case LQ: p_Code[Pc++] = k_STR_LESS_EQU_N1; break;
-            case GR: p_Code[Pc++] = k_STR_GREATER_N1; break;
-            case GQ: p_Code[Pc++] = k_STR_GREATER_EQU_N1; break;
-            default: error("unknown operator", a_Buff); break;
+            case EQ: pCi->p_code[pCi->pc++] = k_STR_EQUAL_N1; break;
+            case NQ: pCi->p_code[pCi->pc++] = k_STR_NOT_EQU_N1; break;
+            case LE: pCi->p_code[pCi->pc++] = k_STR_LESS_N1; break;
+            case LQ: pCi->p_code[pCi->pc++] = k_STR_LESS_EQU_N1; break;
+            case GR: pCi->p_code[pCi->pc++] = k_STR_GREATER_N1; break;
+            case GQ: pCi->p_code[pCi->pc++] = k_STR_GREATER_EQU_N1; break;
+            default: error("unknown operator", pCi->a_buff); break;
             }
         } else {
 #else
         { 
 #endif
             switch(op) {
-            case EQ: p_Code[Pc++] = k_EQUAL_N1; break;
-            case NQ: p_Code[Pc++] = k_NOT_EQUAL_N1; break;
-            case LE: p_Code[Pc++] = k_LESS_N1; break;
-            case LQ: p_Code[Pc++] = k_LESS_EQU_N1; break;
-            case GR: p_Code[Pc++] = k_GREATER_N1; break;
-            case GQ: p_Code[Pc++] = k_GREATER_EQU_N1; break;
-            default: error("unknown operator", a_Buff); break;
+            case EQ: pCi->p_code[pCi->pc++] = k_EQUAL_N1; break;
+            case NQ: pCi->p_code[pCi->pc++] = k_NOT_EQUAL_N1; break;
+            case LE: pCi->p_code[pCi->pc++] = k_LESS_N1; break;
+            case LQ: pCi->p_code[pCi->pc++] = k_LESS_EQU_N1; break;
+            case GR: pCi->p_code[pCi->pc++] = k_GREATER_N1; break;
+            case GQ: pCi->p_code[pCi->pc++] = k_GREATER_EQU_N1; break;
+            default: error("unknown operator", pCi->a_buff); break;
             }
         }
         op = lookahead();
@@ -1345,23 +1396,23 @@ static type_t compile_add_expr(void) {
         match(op);
         type_t type2 = compile_term();
         if(type1 != type2) {
-            error("type mismatch", a_Buff);
+            error("type mismatch", pCi->a_buff);
         }
         if(op == '+') {
             if(type1 == e_NUM) {
-              p_Code[Pc++] = k_ADD_N1;
+              pCi->p_code[pCi->pc++] = k_ADD_N1;
             } else {
 #ifdef cfg_STRING_SUPPORT                
-                p_Code[Pc++] = k_ADD_STR_N1;
+                pCi->p_code[pCi->pc++] = k_ADD_STR_N1;
 #else
-                error("type mismatch", a_Buff);
+                error("type mismatch", pCi->a_buff);
 #endif
             }
         } else {
             if(type1 == e_NUM) {
-              p_Code[Pc++] = k_SUB_N1;
+              pCi->p_code[pCi->pc++] = k_SUB_N1;
             } else {
-              error("type mismatch", a_Buff);
+              error("type mismatch", pCi->a_buff);
             }
         }
         op = lookahead();
@@ -1376,14 +1427,14 @@ static type_t compile_term(void) {
         match(op);
         type_t type2 = compile_factor();
         if(type1 != e_NUM || type2 != e_NUM) {
-            error("type mismatch", a_Buff);
+            error("type mismatch", pCi->a_buff);
         }
         if(op == '*') {
-          p_Code[Pc++] = k_MUL_N1;
+          pCi->p_code[pCi->pc++] = k_MUL_N1;
         } else if(op == MOD) {
-          p_Code[Pc++] = k_MOD_N1;
+          pCi->p_code[pCi->pc++] = k_MOD_N1;
         } else {
-          p_Code[Pc++] = k_DIV_N1;
+          pCi->p_code[pCi->pc++] = k_DIV_N1;
         }
         op = lookahead();
     }
@@ -1401,60 +1452,60 @@ static type_t compile_factor(void) {
         match(')');
         break;
     case e_CNST:
-        Value = a_Symbol[SymIdx].value;
+        pCi->value = a_Symbol[pCi->sym_idx].value;
         match(e_CNST);
-        if(Value < 256)
+        if(pCi->value < 256)
         {
-          p_Code[Pc++] = k_PUSH_NUM_N2;
-          p_Code[Pc++] = Value;
+          pCi->p_code[pCi->pc++] = k_PUSH_NUM_N2;
+          pCi->p_code[pCi->pc++] = pCi->value;
         }
         else
         {
-          p_Code[Pc++] = k_PUSH_NUM_N5;
-          p_Code[Pc++] = Value & 0xFF;
-          p_Code[Pc++] = (Value >> 8) & 0xFF;
-          p_Code[Pc++] = (Value >> 16) & 0xFF;
-          p_Code[Pc++] = (Value >> 24) & 0xFF;
+          pCi->p_code[pCi->pc++] = k_PUSH_NUM_N5;
+          pCi->p_code[pCi->pc++] = pCi->value & 0xFF;
+          pCi->p_code[pCi->pc++] = (pCi->value >> 8) & 0xFF;
+          pCi->p_code[pCi->pc++] = (pCi->value >> 16) & 0xFF;
+          pCi->p_code[pCi->pc++] = (pCi->value >> 24) & 0xFF;
         }
         type = e_NUM;
         break;
     case NUM: // number, like 1234
         match(NUM);
-        if(Value < 256)
+        if(pCi->value < 256)
         {
-          p_Code[Pc++] = k_PUSH_NUM_N2;
-          p_Code[Pc++] = Value;
+          pCi->p_code[pCi->pc++] = k_PUSH_NUM_N2;
+          pCi->p_code[pCi->pc++] = pCi->value;
         }
         else
         {
-          p_Code[Pc++] = k_PUSH_NUM_N5;
-          p_Code[Pc++] = Value & 0xFF;
-          p_Code[Pc++] = (Value >> 8) & 0xFF;
-          p_Code[Pc++] = (Value >> 16) & 0xFF;
-          p_Code[Pc++] = (Value >> 24) & 0xFF;
+          pCi->p_code[pCi->pc++] = k_PUSH_NUM_N5;
+          pCi->p_code[pCi->pc++] = pCi->value & 0xFF;
+          pCi->p_code[pCi->pc++] = (pCi->value >> 8) & 0xFF;
+          pCi->p_code[pCi->pc++] = (pCi->value >> 16) & 0xFF;
+          pCi->p_code[pCi->pc++] = (pCi->value >> 24) & 0xFF;
         }
         type = e_NUM;
         break;
     case ID: // variable, like var1
         match(ID);
-        p_Code[Pc++] = k_PUSH_VAR_N2;
-        p_Code[Pc++] = a_Symbol[SymIdx].value;
+        pCi->p_code[pCi->pc++] = k_PUSH_VAR_N2;
+        pCi->p_code[pCi->pc++] = a_Symbol[pCi->sym_idx].value;
         type = e_NUM;
         break;
     case ARR: 
-        val = a_Symbol[SymIdx].value;
+        val = a_Symbol[pCi->sym_idx].value;
         match(ARR);
         tok = lookahead();
         if(tok == '(') { // like A(0)
             match('(');
             compile_expression(e_NUM);
             match(')');
-            p_Code[Pc++] = k_GET_ARR_ELEM_N2;
-            p_Code[Pc++] = val;
+            pCi->p_code[pCi->pc++] = k_GET_ARR_ELEM_N2;
+            pCi->p_code[pCi->pc++] = val;
             type = e_NUM;
         } else { // left$(A,8) or copy(A, 0,...)
-            p_Code[Pc++] = k_PUSH_VAR_N2;
-            p_Code[Pc++] = a_Symbol[SymIdx].value;
+            pCi->p_code[pCi->pc++] = k_PUSH_VAR_N2;
+            pCi->p_code[pCi->pc++] = a_Symbol[pCi->sym_idx].value;
             type = e_ARR;
         }
         break;
@@ -1475,18 +1526,18 @@ static type_t compile_factor(void) {
     case STR: // string, like "Hello"
         match(STR);
         // push string address
-        uint16_t len = strlen(a_Buff);
-        a_Buff[len - 1] = '\0';
-        p_Code[Pc++] = k_PUSH_STR_Nx;
-        p_Code[Pc++] = len - 1; // without quotes but with 0
-        strcpy((char*)&p_Code[Pc], a_Buff + 1);
-        Pc += len - 1;
+        uint16_t len = strlen(pCi->a_buff);
+        pCi->a_buff[len - 1] = '\0';
+        pCi->p_code[pCi->pc++] = k_PUSH_STR_Nx;
+        pCi->p_code[pCi->pc++] = len - 1; // without quotes but with 0
+        strcpy((char*)&pCi->p_code[pCi->pc], pCi->a_buff + 1);
+        pCi->pc += len - 1;
         type = e_STR;
         break;
     case SID: // string variable, like A$
         match(SID);
-        p_Code[Pc++] = k_PUSH_VAR_N2;
-        p_Code[Pc++] = a_Symbol[SymIdx].value;
+        pCi->p_code[pCi->pc++] = k_PUSH_VAR_N2;
+        pCi->p_code[pCi->pc++] = a_Symbol[pCi->sym_idx].value;
         type = e_STR;
         break;
 #ifdef cfg_STRING_SUPPORT        
@@ -1497,7 +1548,7 @@ static type_t compile_factor(void) {
         match(',');
         compile_expression(e_NUM);
         match(')');
-        p_Code[Pc++] = k_LEFT_STR_N1;
+        pCi->p_code[pCi->pc++] = k_LEFT_STR_N1;
         type = e_STR;
         break;
     case RIGHTS: // right function
@@ -1507,7 +1558,7 @@ static type_t compile_factor(void) {
         match(',');
         compile_expression(e_NUM);
         match(')');
-        p_Code[Pc++] = k_RIGHT_STR_N1;
+        pCi->p_code[pCi->pc++] = k_RIGHT_STR_N1;
         type = e_STR;
         break;
     case MIDS: // mid function
@@ -1519,7 +1570,7 @@ static type_t compile_factor(void) {
         match(',');
         type = compile_expression(e_NUM);
         match(')');
-        p_Code[Pc++] = k_MID_STR_N1;
+        pCi->p_code[pCi->pc++] = k_MID_STR_N1;
         type = e_STR;
         break;
     case LEN: // len function
@@ -1527,7 +1578,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_STR);
         match(')');
-        p_Code[Pc++] = k_STR_LEN_N1;
+        pCi->p_code[pCi->pc++] = k_STR_LEN_N1;
         type = e_NUM;
         break;
     case VAL: // val function
@@ -1535,7 +1586,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_STR);
         match(')');
-        p_Code[Pc++] = k_STR_TO_VAL_N1;
+        pCi->p_code[pCi->pc++] = k_STR_TO_VAL_N1;
         type = e_NUM;
         break;
     case STRS: // str$ function
@@ -1543,7 +1594,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(')');
-        p_Code[Pc++] = k_VAL_TO_STR_N1;
+        pCi->p_code[pCi->pc++] = k_VAL_TO_STR_N1;
         type = e_STR;
         break;
     case HEXS: // hex function
@@ -1551,7 +1602,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(')');
-        p_Code[Pc++] = k_VAL_TO_HEX_N1;
+        pCi->p_code[pCi->pc++] = k_VAL_TO_HEX_N1;
         type = e_STR;
         break;
     case INSTR: // instr function
@@ -1563,14 +1614,14 @@ static type_t compile_factor(void) {
         match(',');
         compile_expression(e_STR);
         match(')');
-        p_Code[Pc++] = k_INSTR_N1;
+        pCi->p_code[pCi->pc++] = k_INSTR_N1;
         type = e_NUM;
         break;
     case PARAMS: // Move value from (external) parameter stack to the data stack
         match(PARAMS);
         match('(');
         match(')');
-        p_Code[Pc++] = k_PARAMS_N1;
+        pCi->p_code[pCi->pc++] = k_PARAMS_N1;
         type = e_STR;
         break;
 #endif
@@ -1582,7 +1633,7 @@ static type_t compile_factor(void) {
         match(',');
         compile_expression(e_NUM);
         match(')');
-        p_Code[Pc++] = k_ALLOC_STR_N1;
+        pCi->p_code[pCi->pc++] = k_ALLOC_STR_N1;
         type = e_STR;
         break;
 #endif        
@@ -1590,7 +1641,7 @@ static type_t compile_factor(void) {
         match(PARAM);
         match('(');
         match(')');
-        p_Code[Pc++] = k_PARAM_N1;
+        pCi->p_code[pCi->pc++] = k_PARAM_N1;
         type = e_NUM;
         break;
     case RND: // Random number
@@ -1598,16 +1649,16 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(')');
-        p_Code[Pc++] = k_RND_N1;
+        pCi->p_code[pCi->pc++] = k_RND_N1;
         type = e_NUM;
         break;
     case XFUNC:
         match(XFUNC);
         type = compile_xfunc();
-        p_Code[Pc++] = k_PARAM_N1;
+        pCi->p_code[pCi->pc++] = k_PARAM_N1;
         break;
     default:
-        error("syntax error", a_Buff);
+        error("syntax error", pCi->a_buff);
         break;
     }
     return type;

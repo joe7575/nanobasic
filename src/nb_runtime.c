@@ -368,6 +368,18 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             vm->variables[var] += 4;
             vm->pc += 4;
             break;
+        case k_READ_STR_N4:
+            var = vm->code[vm->pc + 1];
+            addr = ACS16(vm->code[vm->pc + 2]);
+            offs1 = vm->variables[var] & 0xFFFF;
+            if(addr + offs1 + 4 > vm->code_size) {
+                nb_print("Error: Data address out of bounds\n");
+                return NB_ERROR;
+            }
+            DPUSH(ACS32(vm->code[addr + offs1]));
+            vm->variables[var] += 4;
+            vm->pc += 4;
+            break;
         case k_RESTORE_N2:
             var = vm->code[vm->pc + 1];
             offs1 = DPOP() * sizeof(uint32_t);

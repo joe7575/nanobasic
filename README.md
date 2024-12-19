@@ -20,8 +20,8 @@ Most of the common BASIC keywords are supported:
     DIM array-variable "(" numeric_expression ")"
     ERASE ( array-variable | string-variable$ )
     READ variable-list
-    DATA constant-list                                      ; numbers only, only at the end of the program
-    RESTORE "(" number ")"                                  ; number is offset (0..n), not line number
+    DATA ( constant-list | string-list )       ; Only at the end of the program
+    RESTORE "(" number ")"                     ; Number is offset (0..n), not line number
     RETURN
     END
     BREAK

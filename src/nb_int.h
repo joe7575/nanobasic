@@ -66,6 +66,7 @@ enum {
     k_NEXT_N4,            // (16 bit programm address), (variable)
     k_IF_N3,              // (pop val, END address)
     k_READ_NUM_N4,        // (read const value from DATA section)
+    k_READ_STR_N4,        // (read string address from DATA section)
     k_RESTORE_N2,         // (restore the read pointer)
     k_ON_GOTO_N2,         // (on...goto with last number)
     k_ON_GOSUB_N2,        // (on...gosub with last number)

@@ -92,8 +92,8 @@ int main(int argc, char* argv[]) {
     //FILE *fp = fopen("../examples/test.bas", "r");
     //FILE *fp = fopen("../examples/basis.bas", "r");
     //FILE *fp = fopen("../examples/ext_func.bas", "r");
-    //FILE *fp = fopen("../examples/read_data.bas", "r");
-    FILE *fp = fopen("../examples/temp.bas", "r");
+    FILE *fp = fopen("../examples/read_data.bas", "r");
+    //FILE *fp = fopen("../examples/temp.bas", "r");
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
         return -1;
@@ -102,7 +102,7 @@ int main(int argc, char* argv[]) {
     errors = nb_compile(instance, fp);
     fclose(fp);
 
-    if(errors >0) {
+    if(errors > 0) {
         return 1;
     }
 
