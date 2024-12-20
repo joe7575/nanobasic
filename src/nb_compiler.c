@@ -29,32 +29,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "nb.h"
 #include "nb_int.h"
 
-#define MAX_LINE_LEN        128
-#define MAX_SYM_LEN         8
 #define MAX_XFUNC_PARAMS    8
 #define MAX_CODE_PER_LINE   50 // aprox. max. 50 bytes per line
 #define STR_TAG             0x80000000
-
-// Token types
-enum {
-    LET = 128, DIM, FOR, TO,    // 128 - 131
-    STEP, NEXT, IF, THEN,       // 132 - 135
-    PRINT, GOTO, GOSUB, RETURN, // 136 - 139
-    END, REM, AND, OR,          // 140 - 143
-    NOT, MOD, NUM, STR,         // 144 - 147
-    ID, SID, EQ, NQ,            // 148 - 151
-    LE, LQ, GR, GQ,             // 152 - 155
-    XFUNC, ARR, BREAK, LABEL,   // 156 - 159
-    SET1, SET2, SET4, GET1,     // 160 - 163    
-    GET2, GET4, LEFTS, RIGHTS,  // 164 - 167
-    MIDS, LEN, VAL, STRS,       // 168 - 171
-    SPC, PARAM, COPY, CONST,    // 172 - 175
-    ERASE, ELSE, HEXS,     // 176 - 179
-    INSTR, ON, TRON, TROFF,     // 180 - 183
-    FREE, RND, PARAMS, STRINGS, // 184 - 187
-    WHILE, EXIT, DATA, READ,    // 188 - 191
-    RESTORE,                    // 192
-};
 
 // Expression result types
 typedef enum type_t {
@@ -64,14 +41,6 @@ typedef enum type_t {
     e_ARR = NB_ARR,
     e_CNST,
 } type_t;
-
-// Symbol table
-typedef struct {
-    char name[MAX_SYM_LEN];
-    uint8_t  type;   // Token type
-    uint8_t  res;    // Reserved for future use
-    uint16_t value;  // Variable index (0..n) or label address
-} sym_t;
 
 // Define external function
 typedef struct {
@@ -94,8 +63,8 @@ typedef struct {
     uint16_t linenum;
     uint16_t err_count;
     uint16_t sym_idx;
-    char     a_line[MAX_LINE_LEN];
-    char     a_buff[MAX_LINE_LEN];
+    char     a_line[k_MAX_LINE_LEN];
+    char     a_buff[k_MAX_LINE_LEN];
     uint32_t a_data[cfg_MAX_NUM_DATA];
     uint8_t  data_idx;
     char    *p_pos;
@@ -108,12 +77,12 @@ typedef struct {
     jmp_buf  jmp_buf;
 } comp_inst_t;
 
-xfunc_t a_XFuncs[cfg_MAX_NUM_XFUNC] = {0};
-uint8_t NumXFuncs = 0;
-sym_t a_Symbol[cfg_MAX_NUM_SYM] = {0};
-uint8_t CurrVarIdx = 0;
-uint16_t StartOfVars = 0;
-comp_inst_t *pCi = NULL;
+static xfunc_t a_XFuncs[cfg_MAX_NUM_XFUNC] = {0};
+static uint8_t NumXFuncs = 0;
+static sym_t a_Symbol[cfg_MAX_NUM_SYM] = {0};
+static uint8_t CurrVarIdx = 0;
+static uint16_t StartOfVars = 0;
+static comp_inst_t *pCi = NULL;
 
 static bool get_line(void);
 static uint8_t next_token(void);
@@ -232,6 +201,7 @@ void nb_init(void) {
     sym_add("spc", 0, SPC);
     sym_add("hex$", 0, HEXS);
     sym_add("param$", 0, PARAMS);
+    sym_add("nil", 0, NIL);
 #endif
 #if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)
     sym_add("string$", 0, STRINGS);
@@ -247,6 +217,7 @@ void nb_init(void) {
     sym_add("troff", 0, TROFF);
     sym_add("free", 0, FREE);
     sym_add("rnd", 0, RND);
+    StartOfVars = CurrVarIdx;
 }
 
 uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *types, uint8_t return_type) {
@@ -264,6 +235,7 @@ uint8_t nb_define_external_function(char *name, uint8_t num_params, uint8_t *typ
     for(uint8_t i = 0; i < num_params; i++) {
         a_XFuncs[NumXFuncs].type[i] = types[i];
     }
+    StartOfVars = CurrVarIdx;
     return NB_XFUNC + NumXFuncs++;
 }
 
@@ -272,6 +244,7 @@ void *nb_create(void) {
     if(vm != NULL) {
         memset(vm, 0, sizeof(t_VM));
         nb_mem_init(vm);
+        vm->pc = 1;
         //srand(time(NULL));
     }
     return vm;
@@ -289,7 +262,6 @@ uint16_t nb_compile(void *pv_vm, void *fp) {
     memset(pCi, 0, sizeof(comp_inst_t));
 
     pCi->p_code = vm->code;
-    StartOfVars = CurrVarIdx;
     CurrVarIdx = 0;
     pCi->pc = 0;
     pCi->file_ptr = fp;
@@ -297,6 +269,7 @@ uint16_t nb_compile(void *pv_vm, void *fp) {
     pCi->err_count = 0;
     pCi->trace_on = false;
     pCi->first_data_declaration = true;
+    pCi->p_code[pCi->pc++] = 0; // The first byte is reserved (invalid label address)
 
     setjmp(pCi->jmp_buf);
     while(get_line()) {
@@ -306,10 +279,12 @@ uint16_t nb_compile(void *pv_vm, void *fp) {
     if(pCi->err_count > 0) {
         vm->code_size = 0;
         free(pCi);
+        err_count = pCi->err_count;
         pCi = NULL;
-        return pCi->err_count;
+        return err_count;
     }
 
+    compile_end();
     append_data_to_code();
     resolve_forward_declarations();
 
@@ -341,7 +316,9 @@ void nb_output_symbol_table(void *pv_vm) {
     for(uint16_t i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL)
         {
-            nb_print("%2u: %8s\n", idx++, a_Symbol[i].name);
+            nb_print("%2u: %-8s  %s\n", idx++, 
+                (a_Symbol[i].type == ID) ? "(number)" : (a_Symbol[i].type == SID) ? "(string)" : "(array)",
+                a_Symbol[i].name);
         }
     }
 #ifndef cfg_LINE_NUMBERS    
@@ -358,9 +335,9 @@ void nb_output_symbol_table(void *pv_vm) {
 // return 0 if not found
 uint16_t nb_get_label_address(void *pv_vm, char *name) {
     (void)pv_vm;
-    char str[MAX_SYM_LEN];
+    char str[k_MAX_SYM_LEN];
     // Convert to lower case
-    for(uint16_t i = 0; i < MAX_SYM_LEN; i++) {
+    for(uint16_t i = 0; i < k_MAX_SYM_LEN; i++) {
         str[i] = tolower(name[i]);
         if(name[i] == '\0') {
             break;
@@ -374,14 +351,19 @@ uint16_t nb_get_label_address(void *pv_vm, char *name) {
         }
     }
     return 0;
-}   
+}
+
+sym_t *nb_get_symbol_table(uint16_t *p_start_idx) {
+    *p_start_idx = StartOfVars;
+    return a_Symbol;
+}
 
 /*************************************************************************************************
 ** Static functions
 *************************************************************************************************/
 static bool get_line(void) {
-    if(nb_get_code_line(pCi->file_ptr, pCi->a_line, MAX_LINE_LEN) != NULL) {
-        if(strlen(pCi->a_line) > (MAX_LINE_LEN - 2)) {
+    if(nb_get_code_line(pCi->file_ptr, pCi->a_line, k_MAX_LINE_LEN) != NULL) {
+        if(strlen(pCi->a_line) > (k_MAX_LINE_LEN - 2)) {
             error("line too long", NULL);
         }
         pCi->p_pos = pCi->p_next = pCi->a_line;
@@ -956,7 +938,7 @@ static void compile_read(void) {
         if(tok == ID) {
             match(ID);
             idx1 = pCi->sym_idx;
-            idx2 = sym_add("@data", CurrVarIdx, ID);
+            idx2 = sym_add("@data", CurrVarIdx, LABEL);
             pCi->p_code[pCi->pc++] = k_READ_NUM_N4;
             pCi->p_code[pCi->pc++] = a_Symbol[idx2].value;
             forward_declaration(idx2, pCi->pc);
@@ -966,7 +948,7 @@ static void compile_read(void) {
         } else if(tok == SID) {
             match(SID);
             idx1 = pCi->sym_idx;
-            idx2 = sym_add("@data", CurrVarIdx, SID);
+            idx2 = sym_add("@data", CurrVarIdx, LABEL);
             pCi->p_code[pCi->pc++] = k_READ_STR_N4;
             pCi->p_code[pCi->pc++] = a_Symbol[idx2].value;
             forward_declaration(idx2, pCi->pc);
@@ -984,7 +966,7 @@ static void compile_read(void) {
 }
 
 static void compile_restore(void) {
-    uint16_t idx = sym_add("@data", CurrVarIdx, ID);
+    uint16_t idx = sym_add("@data", CurrVarIdx, LABEL);
     match('(');
     compile_expression(e_NUM);
     match(')');
@@ -1024,7 +1006,9 @@ static type_t compile_xfunc(void) {
 }
 
 static void compile_break(void) {
-    pCi->p_code[pCi->pc++] = k_BREAK_INSTR_N1;
+    pCi->p_code[pCi->pc++] = k_BREAK_INSTR_N3;
+    ACS16(pCi->p_code[pCi->pc]) = pCi->linenum;
+    pCi->pc += 2;
 }
 
 #ifdef cfg_BYTE_ACCESS
@@ -1169,16 +1153,16 @@ static void compile_free(void) {
 */
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
     uint16_t start = 0;
-    char sym[MAX_SYM_LEN];
+    char sym[k_MAX_SYM_LEN];
 
     // Convert to lower case
-    for(uint16_t i = 0; i < MAX_SYM_LEN; i++) {
+    for(uint16_t i = 0; i < k_MAX_SYM_LEN; i++) {
         sym[i] = tolower(id[i]);
         if(sym[i] == '\0') {
             break;
         }
     }
-    sym[MAX_SYM_LEN - 1] = '\0';
+    sym[k_MAX_SYM_LEN - 1] = '\0';
 
     // Search for existing symbol
     for(uint16_t i = 0; i < cfg_MAX_NUM_SYM; i++) {
@@ -1197,10 +1181,12 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
     // Add new symbol
     for(uint16_t i = start; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] == '\0') {
-            memcpy(a_Symbol[i].name, sym, MIN(strlen(sym), MAX_SYM_LEN));
+            memcpy(a_Symbol[i].name, sym, MIN(strlen(sym), k_MAX_SYM_LEN));
             a_Symbol[i].value = val;
             a_Symbol[i].type = type;
-            CurrVarIdx++;
+            if(type != LABEL) {
+                CurrVarIdx++;
+            }
             return i;
         }
     }
@@ -1209,16 +1195,16 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
 }
 
 static uint16_t sym_get(char *id) {
-    char sym[MAX_SYM_LEN];
+    char sym[k_MAX_SYM_LEN];
 
     // Convert to lower case
-    for(uint16_t i = 0; i < MAX_SYM_LEN; i++) {
+    for(uint16_t i = 0; i < k_MAX_SYM_LEN; i++) {
         sym[i] = tolower(id[i]);
         if(sym[i] == '\0') {
             break;
         }
     }
-    sym[MAX_SYM_LEN - 1] = '\0';
+    sym[k_MAX_SYM_LEN - 1] = '\0';
 
     // Search for existing symbol
     for(uint16_t i = 0; i < cfg_MAX_NUM_SYM; i++) {
@@ -1236,7 +1222,7 @@ static uint16_t sym_get(char *id) {
 static void error(char *err, char *id) {
     nb_print("Error in line %u: ", pCi->linenum);
     if(id != NULL && id[0] != '\0') {
-        nb_print("%s at '%s'\n", err, id);
+        nb_print("%s '%s'\n", err, id);
     } else {
         nb_print("%s\n", err);
     }
@@ -1277,9 +1263,22 @@ static void resolve_forward_declarations(void) {
     for(uint8_t i = 0; i < pCi->num_fw_decls; i++) {
         idx = pCi->a_forward_decl[i].idx;
         pos = pCi->a_forward_decl[i].pos;
-        addr = a_Symbol[idx].value;
-        pCi->p_code[pos + 0] = addr & 0xFF;
-        pCi->p_code[pos + 1] = (addr >> 8) & 0xFF;
+        if(a_Symbol[idx].type == LABEL) {
+            addr = a_Symbol[idx].value;
+            if(addr > 0) {
+                pCi->p_code[pos + 0] = addr & 0xFF;
+                pCi->p_code[pos + 1] = (addr >> 8) & 0xFF;
+            } else {
+#ifdef cfg_LINE_NUMBERS
+                error("Line number not found", a_Symbol[idx].name);
+#else
+                error("Label not found", a_Symbol[idx].name);
+#endif
+            }
+        } else {
+
+            error("forward declaration not resolved", a_Symbol[idx].name);
+        }
     }
     pCi->num_fw_decls = 0;
 }
@@ -1289,7 +1288,7 @@ static void append_data_to_code(void) {
         error("code size exceeded", NULL);
     }
 
-    uint16_t idx = sym_add("@data", 0, ID);
+    uint16_t idx = sym_add("@data", 0, LABEL);
     a_Symbol[idx].value = pCi->pc;
 
     for(int i = 0; i < pCi->data_idx; i++) {
@@ -1656,6 +1655,12 @@ static type_t compile_factor(void) {
         match(XFUNC);
         type = compile_xfunc();
         pCi->p_code[pCi->pc++] = k_PARAM_N1;
+        break;
+    case NIL:
+        match(NIL);
+        pCi->p_code[pCi->pc++] = k_PUSH_NUM_N2;
+        pCi->p_code[pCi->pc++] = 0;
+        type = e_ARR;
         break;
     default:
         error("syntax error", pCi->a_buff);

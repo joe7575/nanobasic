@@ -17,6 +17,8 @@ for i = 1 to 4
   print name$, "is" age "years old"
 next i
 
+free()
+
 end
 
 data 9, 8, 7, 6, 5

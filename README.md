@@ -27,7 +27,7 @@ Most of the common BASIC keywords are supported:
     BREAK
     TRON, TROFF
     FREE
-    AND, NOT, OR, RND, MOD, LEN, VAL, SPC
+    AND, NOT, OR, RND, MOD, LEN, VAL, SPC, NIL
     LEN, CHR$, MID$, LEFT$, RIGHT$, STR$, HEX$, STRING$
 ```
 

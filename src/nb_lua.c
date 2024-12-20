@@ -308,6 +308,36 @@ static int reset(lua_State *L) {
     return 1;
 }
 
+static int destroy(lua_State *L) {
+    nb_cpu_t *C = check_vm(L);
+    if(C != NULL) {
+        nb_destroy(C->pv_vm);
+        C->pv_vm = NULL; 
+    }
+    return 0;
+}
+
+static int dump_code(lua_State *L) {
+    nb_cpu_t *C = check_vm(L);
+    if(C != NULL) {
+        nb_dump_code(C->pv_vm);
+        return 0;
+    }
+    return 0;
+}
+
+static int output_symbol_table(lua_State *L) {
+    nb_cpu_t *C = check_vm(L);
+    if(C != NULL) {
+        nb_output_symbol_table(C->pv_vm);
+        return 0;
+    }
+    return 0;
+}
+
+/*
+** Store/resore the VM
+*/
 static int pack_vm(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
@@ -353,33 +383,9 @@ static int unpack_vm(lua_State *L) {
     return 1;
 }
 
-static int destroy(lua_State *L) {
-    nb_cpu_t *C = check_vm(L);
-    if(C != NULL) {
-        nb_destroy(C->pv_vm);
-        C->pv_vm = NULL; 
-    }
-    return 0;
-}
-
-static int dump_code(lua_State *L) {
-    nb_cpu_t *C = check_vm(L);
-    if(C != NULL) {
-        nb_dump_code(C->pv_vm);
-        return 0;
-    }
-    return 0;
-}
-
-static int output_symbol_table(lua_State *L) {
-    nb_cpu_t *C = check_vm(L);
-    if(C != NULL) {
-        nb_output_symbol_table(C->pv_vm);
-        return 0;
-    }
-    return 0;
-}
-
+/*
+** API functions for external NanoBasic functions
+*/
 static int get_label_address(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
@@ -467,9 +473,9 @@ static int pop_arr_addr(lua_State *L) {
 static int read_arr(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
-        uint8_t var = luaL_checkinteger(L, 2);
+        uint16_t addr = luaL_checkinteger(L, 2);
         uint8_t arr[256];
-        uint16_t bytes = nb_read_arr(C->pv_vm, var, arr, sizeof(arr));
+        uint16_t bytes = nb_read_arr(C->pv_vm, addr, arr, sizeof(arr));
         if(bytes > 0) {
             lua_newtable(L);
             for(uint16_t i = 0; i < bytes; i++) {
@@ -485,16 +491,77 @@ static int read_arr(lua_State *L) {
 static int write_arr(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
-        uint8_t var = luaL_checkinteger(L, 2);
+        uint16_t addr = luaL_checkinteger(L, 2);
         uint8_t arr[256];
         uint16_t num = table_to_bytes(L, 3, arr, sizeof(arr));
-        uint16_t res = nb_write_arr(C->pv_vm, var, arr, num);
+        uint16_t res = nb_write_arr(C->pv_vm, addr, arr, num);
         lua_pushinteger(L, res);
         return 1;
     }
     return 0;
 }
 
+/*
+** Debug interface
+*/
+static int get_variable_list(lua_State *L) {
+    nb_cpu_t *C = check_vm(L);
+    uint16_t start_idx;
+    uint8_t idx = 0;
+    uint8_t type;
+
+    if(C != NULL) {
+        sym_t *p_sym = nb_get_symbol_table(&start_idx);
+        lua_newtable(L);
+        for(int i = start_idx; i < cfg_MAX_NUM_SYM; i++) {
+            if(p_sym[i].name[0] != '\0' && p_sym[i].type != LABEL) {
+                // tbl[name] = {type, idx}
+                type = (p_sym[i].type == ID) ? NB_NUM : (p_sym[i].type == SID) ? NB_STR : NB_ARR;
+                lua_newtable(L);
+                lua_pushinteger(L, type);
+                lua_rawseti(L, -2, 1);
+                lua_pushinteger(L, idx++);
+                lua_rawseti(L, -2, 2);
+                lua_setfield(L, -2, p_sym[i].name);
+            }
+        }
+        return 1;
+    }
+    return 0;
+}
+
+// read_variable(type, var, idx)  (idx for arrays elements)
+static int read_variable(lua_State *L) {
+    nb_cpu_t *C = check_vm(L);
+    if(C != NULL) {
+        uint8_t type = luaL_checkinteger(L, 2);
+        uint8_t var = luaL_checkinteger(L, 3);
+        uint8_t idx = luaL_checkinteger(L, 4);
+        if(type == NB_NUM) {
+            uint32_t val = nb_get_number(C->pv_vm, var);
+            printf("read num %d = %d\n", var, val);
+            lua_pushinteger(L, val);
+            return 1;
+        } else if(type == NB_STR) {
+            char *ptr = nb_get_string(C->pv_vm, var);
+            if(ptr != NULL) {
+                printf("read str %d = %s\n", var, ptr);
+                lua_pushstring(L, ptr);
+                return 1;
+            }
+        } else if(type == NB_ARR) {
+            uint32_t val = nb_get_arr_elem(C->pv_vm, var, idx);
+            printf("read arr %d(%d) = %d\n", var, idx, val);
+            lua_pushinteger(L, val);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/*
+** Helper functions
+*/
 static int hash_node_position(lua_State *L) {
     int16_t x, y, z;
     char s[12];
@@ -545,6 +612,7 @@ static const luaL_Reg R[] = {
     {"destroy",                 destroy},
     {"pack_vm",                 pack_vm},
     {"unpack_vm",               unpack_vm},
+    {"get_variable_list",       get_variable_list},
     {"run",                     run},
     {"get_screen_buffer",       get_screen_buffer},
     {"print",                   print},
@@ -557,7 +625,8 @@ static const luaL_Reg R[] = {
     {"push_num",                push_num},
     {"pop_str",                 pop_str},
     {"push_str",                push_str},
-    {"nb_pop_arr_addr",         pop_arr_addr},
+    {"pop_arr_addr",            pop_arr_addr},
+    {"read_variable",           read_variable},
     {"read_arr",                read_arr},
     {"write_arr",               write_arr},
     {"hash_node_position",      hash_node_position},

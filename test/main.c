@@ -92,8 +92,9 @@ int main(int argc, char* argv[]) {
     //FILE *fp = fopen("../examples/test.bas", "r");
     //FILE *fp = fopen("../examples/basis.bas", "r");
     //FILE *fp = fopen("../examples/ext_func.bas", "r");
-    FILE *fp = fopen("../examples/read_data.bas", "r");
-    //FILE *fp = fopen("../examples/temp.bas", "r");
+    //FILE *fp = fopen("../examples/read_data.bas", "r");
+    //FILE *fp = fopen("../examples/on_gosub.bas", "r");
+    FILE *fp = fopen("../examples/temp.bas", "r");
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
         return -1;
@@ -107,9 +108,6 @@ int main(int argc, char* argv[]) {
     }
 
     nb_output_symbol_table(instance);
-    //efunc4 = nb_get_label_address(instance, "efunc4");
-    //ext_buf = nb_get_var_num(instance, "extbuf");
-
     nb_print("\nNanoBasic Interpreter V1.0\n");
     nb_dump_code(instance);
 
@@ -117,7 +115,18 @@ int main(int argc, char* argv[]) {
         cycles = 50;
         while(cycles > 0 && res >= NB_BUSY && timeout <= time(NULL)) {
             res = nb_run(instance, &cycles);
-            if(res == NB_XFUNC) {
+            if(res == NB_BREAK) {
+                uint32_t lineno = nb_pop_num(instance);
+                nb_print("Break in line %u\n", lineno);
+                uint32_t val = nb_get_number(instance, 0);
+                printf("read num %d = %d\n", 0, val);
+                char *ptr = nb_get_string(instance, 1);
+                if(ptr != NULL) {
+                    printf("read str %d = %s\n", 1, ptr);
+                }
+                val = nb_get_arr_elem(instance, 3, 0);
+                printf("read arr %d(%d) = %d\n", 3, 0, val);
+            } else if(res == NB_XFUNC) {
                 // setcur
                 uint8_t x = nb_pop_num(instance);
                 uint8_t y = nb_pop_num(instance);

@@ -43,8 +43,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 enum {
   NB_END = 0,  // programm end reached
   NB_ERROR,    // error in programm
-  NB_BUSY,     // programm still running
   NB_BREAK,    // break command
+  NB_BUSY,     // programm still running
   NB_XFUNC,    // 'call' external function
 };
 

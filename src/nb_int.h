@@ -21,6 +21,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define k_MEM_BLOCK_SIZE    (8)     // Must be a multiple of 4 (real size is MIN_BLOCK_SIZE - 1)
 #define k_MEM_FREE_TAG      (0)     // Also used for number of blocks
+#define k_MAX_SYM_LEN       (8)     // Max. length of a symbol name incl. '\0'
+#define k_MAX_LINE_LEN      (128)   // Max. length of a line/string
+
 
 #define ACS8(x)   *(uint8_t*)&(x)
 #define ACS16(x)  *(uint16_t*)&(x)
@@ -45,7 +48,7 @@ enum {
     k_POP_VAR_N2,         // (pop variable)
     k_POP_STR_N2,         // (pop variable)
     k_DIM_ARR_N2,         // (pop variable, pop size)
-    k_BREAK_INSTR_N1,     // (break)
+    k_BREAK_INSTR_N3,     // (break with line number)
     k_ADD_N1,             // (add two values from stack)
     k_SUB_N1,             // (sub two values from stack)
     k_MUL_N1,             // (mul two values from stack)
@@ -104,6 +107,36 @@ enum {
     k_ALLOC_STR_N1,       // (alloc string)
 };
 
+// Token types
+enum {
+    LET = 128, DIM, FOR, TO,    // 128 - 131
+    STEP, NEXT, IF, THEN,       // 132 - 135
+    PRINT, GOTO, GOSUB, RETURN, // 136 - 139
+    END, REM, AND, OR,          // 140 - 143
+    NOT, MOD, NUM, STR,         // 144 - 147
+    ID, SID, EQ, NQ,            // 148 - 151
+    LE, LQ, GR, GQ,             // 152 - 155
+    XFUNC, ARR, BREAK, LABEL,   // 156 - 159
+    SET1, SET2, SET4, GET1,     // 160 - 163    
+    GET2, GET4, LEFTS, RIGHTS,  // 164 - 167
+    MIDS, LEN, VAL, STRS,       // 168 - 171
+    SPC, PARAM, COPY, CONST,    // 172 - 175
+    ERASE, ELSE, HEXS, NIL,     // 176 - 179
+    INSTR, ON, TRON, TROFF,     // 180 - 183
+    FREE, RND, PARAMS, STRINGS, // 184 - 187
+    WHILE, EXIT, DATA, READ,    // 188 - 191
+    RESTORE,                    // 192
+};
+
+// Symbol table
+typedef struct {
+    char name[k_MAX_SYM_LEN];
+    uint8_t  type;   // Token type
+    uint8_t  res;    // Reserved for future use
+    uint16_t value;  // Variable index (0..n) or label address
+} sym_t;
+
+// Virtual machine
 typedef struct {
     uint16_t code_size; // size of the compiled byte code
     uint16_t num_vars;  // number of used variables
@@ -118,9 +151,16 @@ typedef struct {
     uint8_t  code[cfg_MAX_CODE_SIZE];
     uint16_t mem_start_addr;
     uint8_t  heap[cfg_MEM_HEAP_SIZE];
+#ifdef cfg_STRING_SUPPORT
+    char     strbuf[k_MAX_LINE_LEN];
+#endif
 } t_VM;
 
 char *nb_scanner(char *p_in, char *p_out);
+sym_t *nb_get_symbol_table(uint16_t *p_start_idx);
+uint32_t nb_get_number(void *pv_vm, uint8_t var);
+char *nb_get_string(void *pv_vm, uint8_t var);
+uint32_t nb_get_arr_elem(void *pv_vm, uint8_t var, uint16_t idx);
 void nb_mem_init(t_VM *p_vm);
 uint16_t nb_mem_alloc(t_VM *p_vm, uint16_t bytes);
 void nb_mem_free(t_VM *p_vm, uint16_t addr);
