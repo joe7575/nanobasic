@@ -147,7 +147,10 @@ void nb_print(const char * format, ...)
         for(int i = 0; i < strlen(buffer); i++) {
             if (buffer[i] >= ' ' && buffer[i] <= '~') {
                 p_Cpu->screen_buffer[p_Cpu->ypos * MAX_LINE_LEN + p_Cpu->xpos] = buffer[i];
-                p_Cpu->xpos = MIN(p_Cpu->xpos + 1, MAX_LINE_LEN - 2);
+                p_Cpu->xpos++;
+                if(p_Cpu->xpos >= MAX_LINE_LEN) {
+                    new_line(p_Cpu);
+                }
             } else if(buffer[i] == '\n') {
                 // new line
                 new_line(p_Cpu);

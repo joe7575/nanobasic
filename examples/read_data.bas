@@ -3,14 +3,14 @@ for i = 1 to 10
   print A
 next i
 
-restore(6)
+restore 6
 
 for i = 1 to 2
   read A, B
   print A, B
 next i
 
-restore(10)
+restore 10 
 
 for i = 1 to 4
   read name$, age

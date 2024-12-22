@@ -31,7 +31,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define MAX_XFUNC_PARAMS    8
 #define MAX_CODE_PER_LINE   50 // aprox. max. 50 bytes per line
-#define STR_TAG             0x80000000
 
 // Expression result types
 typedef enum type_t {
@@ -71,7 +70,6 @@ typedef struct {
     char    *p_next;
     uint32_t value;
     uint8_t  next_tok;
-    uint8_t  nested_loop_idx;
     bool     trace_on;
     bool     first_data_declaration;
     jmp_buf  jmp_buf;
@@ -87,6 +85,7 @@ static comp_inst_t *pCi = NULL;
 static bool get_line(void);
 static uint8_t next_token(void);
 static uint8_t lookahead(void);
+static bool end_of_line(void);
 static uint8_t next(void);
 static void match(uint8_t expected);
 #ifndef cfg_LINE_NUMBERS
@@ -106,11 +105,7 @@ static void remark(void);
 static void compile_print(void);
 static void debug_print(uint16_t lineno);
 static void compile_string(void);
-#ifdef cfg_BASIC_V2
-static void compile_exit(void);
-#else
 static void compile_end(void);
-#endif
 static type_t compile_xfunc(void);
 static void compile_break(void);
 #ifdef cfg_BYTE_ACCESS
@@ -140,7 +135,7 @@ static void error(char *err, char *id);
 static uint8_t get_num_vars(void);
 static void forward_declaration(uint16_t idx, uint16_t pos);
 static void resolve_forward_declarations(void);
-static void append_data_to_code(void);
+static void append_data_to_code(t_VM *vm);
 static type_t compile_expression(type_t type);
 static type_t compile_and_expr(void);
 static type_t compile_not_expr(void);
@@ -166,7 +161,8 @@ void nb_init(void) {
 #ifdef cfg_BASIC_V2    
     sym_add("end", 0, END);
     sym_add("while", 0, WHILE);
-    sym_add("exit", 0, EXIT);
+    sym_add("loop", 0, LOOP);
+    sym_add("endif", 0, ENDIF);
 #endif
     sym_add("print", 0, PRINT);
     sym_add("goto", 0, GOTO);
@@ -285,7 +281,7 @@ uint16_t nb_compile(void *pv_vm, void *fp) {
     }
 
     compile_end();
-    append_data_to_code();
+    append_data_to_code(vm);
     resolve_forward_declarations();
 
     vm->code_size = pCi->pc;
@@ -445,6 +441,10 @@ static uint8_t lookahead(void) {
     return pCi->next_tok;
 }
 
+static bool end_of_line(void) {
+    return lookahead() == 0;
+}
+
 static uint8_t next(void) {
     if(pCi->p_pos == pCi->p_next) {
        pCi->next_tok = next_token();
@@ -535,12 +535,10 @@ static void compile_stmt(void) {
     case DATA: compile_data(); break;
     case RESTORE: compile_restore(); break;
 #ifdef cfg_BASIC_V2
-    case EXIT: compile_exit(); break;
     case CONST: compile_const(); break;
     case WHILE: compile_while(); break;
-#else    
-    case END: compile_end(); break;
 #endif
+    case END: compile_end(); break;
     case XFUNC: compile_xfunc(); break;
     case BREAK: compile_break(); break;
 #ifdef cfg_BYTE_ACCESS    
@@ -571,10 +569,7 @@ static void compile_for(void) {
     uint8_t tok;
     uint16_t idx;
 
-    if(++pCi->nested_loop_idx >= cfg_MAX_FOR_LOOPS) {
-        error("too many nested 'for/while' loops", NULL);
-    }
-
+    pCi->p_code[pCi->pc++] = k_FOR_N1;
     // FOR ID
     match(ID);
     idx = pCi->sym_idx;
@@ -615,7 +610,6 @@ static void compile_for(void) {
     pCi->p_code[pCi->pc++] = pc & 0xFF;
     pCi->p_code[pCi->pc++] = (pc >> 8) & 0xFF;
     pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
-    pCi->nested_loop_idx--;
 }
 
 #ifdef cfg_BASIC_V2
@@ -623,15 +617,11 @@ static void compile_for(void) {
 ** WHILE <Expression>
 ** (not: goto end)
 **    <Statement>...
-** END
+** LOOP
 */
 static void compile_while(void) {
     uint16_t pos1, pos2;
     uint8_t tok;
-
-    if(++pCi->nested_loop_idx >= cfg_MAX_FOR_LOOPS) {
-        error("too many nested 'for/while' loops", NULL);
-    }
 
     pos1 = pCi->pc;
     compile_expression(e_NUM);
@@ -640,17 +630,16 @@ static void compile_while(void) {
     pCi->pc += 2;
     while(get_line()) {
         tok = lookahead();
-        if(tok == END) {
+        if(tok == LOOP) {
             break;
         }
         compile_line();
     }
-    match(END);
+    match(LOOP);
     pCi->p_code[pCi->pc++] = k_GOTO_N3;
     pCi->p_code[pCi->pc++] = pos1 & 0xFF;
     pCi->p_code[pCi->pc++] = (pos1 >> 8) & 0xFF;
     ACS16(pCi->p_code[pos2]) = pCi->pc;
-    pCi->nested_loop_idx--;
 }
 
 /*
@@ -660,23 +649,15 @@ static void compile_while(void) {
 ** (goto end)
 ** [ELSE
 **    <Statement>...]
-** END
+** ENDIF
 */
-static void compile_if(void) {
+static void compile_if_V2(uint16_t pos1) {
     uint8_t tok;
-    uint16_t pos1; // for else address
-    uint16_t pos2; // ifend
-
-    compile_expression(e_NUM);
-    pCi->p_code[pCi->pc++] = k_IF_N3;
-    pos1 = pCi->pc;
-    pCi->pc += 2;
-    tok = lookahead();
-    match(THEN);
+    uint16_t pos2; // endif
 
     while(get_line()) {
         tok = lookahead();
-        if(tok == ELSE || tok == END) {
+        if(tok == ELSE || tok == ENDIF) {
             break;
         }
         compile_line();
@@ -690,7 +671,7 @@ static void compile_if(void) {
 
         while(get_line()) {
             tok = lookahead();
-            if(tok == END) {
+            if(tok == ENDIF) {
                 break;
             }
             compile_line();
@@ -700,9 +681,9 @@ static void compile_if(void) {
     } else {
         ACS16(pCi->p_code[pos1]) = pCi->pc;
     }
-    match(END);
+    match(ENDIF);
 }
-#else
+#endif
 static void compile_if(void) {
     uint8_t tok;
 
@@ -713,6 +694,12 @@ static void compile_if(void) {
     tok = lookahead();
     if(tok == THEN) {
         match(THEN);
+#ifdef cfg_BASIC_V2
+        if(end_of_line()) {
+            compile_if_V2(pos);
+        }
+    }
+#else
         compile_stmts();
         ACS16(pCi->p_code[pos]) = pCi->pc;
     } else if(tok == GOTO) {
@@ -732,8 +719,8 @@ static void compile_if(void) {
         compile_stmts();
         ACS16(pCi->p_code[pos]) = pCi->pc;
     }
-}
 #endif
+}
 
 static void compile_goto(void) {
     uint16_t addr;
@@ -847,6 +834,7 @@ static void compile_print(void) {
             pCi->p_code[pCi->pc++] = k_PRINT_STR_N1;
             match(SID);
         } else if(tok == SPC) { // spc function
+            match(SPC);
             match('(');
             compile_expression(e_NUM);
             match(')');
@@ -906,7 +894,7 @@ static void compile_data(void) {
     while(1) {
         tok = next();
         if(tok == NUM) {
-            pCi->a_data[pCi->data_idx++] = pCi->value & ~STR_TAG;
+            pCi->a_data[pCi->data_idx++] = pCi->value & ~k_DATA_STR_TAG;
         } else if(tok == STR) {
             // without quotes but with 0
             uint16_t len = strlen(pCi->a_buff) - 1;
@@ -915,7 +903,7 @@ static void compile_data(void) {
                 error("code size exceeded", NULL);
             }
             memcpy(&pCi->p_code[pCi->pc], pCi->a_buff + 1, len);
-            pCi->a_data[pCi->data_idx++] = pCi->pc | STR_TAG;
+            pCi->a_data[pCi->data_idx++] = pCi->pc | k_DATA_STR_TAG;
             pCi->pc += len;
         } else {
             error("syntax error", pCi->a_buff);
@@ -931,30 +919,22 @@ static void compile_data(void) {
 
 static void compile_read(void) {
     uint8_t tok;
-    uint16_t idx1, idx2;
+    uint16_t idx;
 
     while(1) {
         tok = lookahead();
         if(tok == ID) {
             match(ID);
-            idx1 = pCi->sym_idx;
-            idx2 = sym_add("@data", CurrVarIdx, LABEL);
-            pCi->p_code[pCi->pc++] = k_READ_NUM_N4;
-            pCi->p_code[pCi->pc++] = a_Symbol[idx2].value;
-            forward_declaration(idx2, pCi->pc);
-            pCi->pc += 2;
+            idx = pCi->sym_idx;
+            pCi->p_code[pCi->pc++] = k_READ_NUM_N1;
             pCi->p_code[pCi->pc++] = k_POP_VAR_N2;
-            pCi->p_code[pCi->pc++] = a_Symbol[idx1].value;
+            pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
         } else if(tok == SID) {
             match(SID);
-            idx1 = pCi->sym_idx;
-            idx2 = sym_add("@data", CurrVarIdx, LABEL);
-            pCi->p_code[pCi->pc++] = k_READ_STR_N4;
-            pCi->p_code[pCi->pc++] = a_Symbol[idx2].value;
-            forward_declaration(idx2, pCi->pc);
-            pCi->pc += 2;
+            idx = pCi->sym_idx;
+            pCi->p_code[pCi->pc++] = k_READ_STR_N1;
             pCi->p_code[pCi->pc++] = k_POP_STR_N2;
-            pCi->p_code[pCi->pc++] = a_Symbol[idx1].value;
+            pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
         }
         tok = lookahead();
         if(tok == ',') {
@@ -966,23 +946,19 @@ static void compile_read(void) {
 }
 
 static void compile_restore(void) {
-    uint16_t idx = sym_add("@data", CurrVarIdx, LABEL);
-    match('(');
-    compile_expression(e_NUM);
-    match(')');
-    pCi->p_code[pCi->pc++] = k_RESTORE_N2;
-    pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
+    uint8_t tok = lookahead();
+    if(tok == NUM) {
+        compile_expression(e_NUM);
+    } else {
+        pCi->p_code[pCi->pc++] = k_PUSH_NUM_N2;
+        pCi->p_code[pCi->pc++] = 0;
+    }
+    pCi->p_code[pCi->pc++] = k_RESTORE_N1;
 }
 
-#ifdef cfg_BASIC_V2
-static void compile_exit(void) {
-    pCi->p_code[pCi->pc++] = k_END;
-}
-#else
 static void compile_end(void) {
     pCi->p_code[pCi->pc++] = k_END;
 }
-#endif
 
 static type_t compile_xfunc(void) {
     uint8_t idx = sym_get(pCi->a_buff);
@@ -1136,8 +1112,6 @@ static void compile_troff(void) {
 }
 
 static void compile_free(void) {
-    match('(');
-    match(')');
     pCi->p_code[pCi->pc++] = k_FREE_N1;
 }
 
@@ -1283,15 +1257,20 @@ static void resolve_forward_declarations(void) {
     pCi->num_fw_decls = 0;
 }
 
-static void append_data_to_code(void) {
+static void append_data_to_code(t_VM *vm) {
+    pCi->p_code[pCi->pc++] = 0xFF;  // End tag before the data section starts
+    vm->data_start_addr = pCi->pc;
+    vm->data_read_offs = 0;
+    
     if((pCi->pc + pCi->data_idx * 4) >= cfg_MAX_CODE_SIZE) {
         error("code size exceeded", NULL);
     }
-
-    uint16_t idx = sym_add("@data", 0, LABEL);
-    a_Symbol[idx].value = pCi->pc;
-
     for(int i = 0; i < pCi->data_idx; i++) {
+        if(pCi->a_data[i] & k_DATA_STR_TAG) {
+            printf("data: %s\n", (char*)&pCi->p_code[pCi->a_data[i] & ~k_DATA_STR_TAG]);
+        } else {
+            printf("data: %08X\n", pCi->a_data[i]);
+        }
         ACS32(pCi->p_code[pCi->pc]) = pCi->a_data[i];
         pCi->pc += 4;
     }
@@ -1630,7 +1609,7 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(',');
-        compile_expression(e_NUM);
+        compile_expression(e_STR);
         match(')');
         pCi->p_code[pCi->pc++] = k_ALLOC_STR_N1;
         type = e_STR;

@@ -52,4 +52,5 @@ while idx < len(words):
             print()
         index += bytes
         idx += bytes
-            
+    elif byte == 0xFF:
+        break        

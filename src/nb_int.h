@@ -23,6 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define k_MEM_FREE_TAG      (0)     // Also used for number of blocks
 #define k_MAX_SYM_LEN       (8)     // Max. length of a symbol name incl. '\0'
 #define k_MAX_LINE_LEN      (128)   // Max. length of a line/string
+#define k_DATA_STR_TAG      (0x80000000) // To distinguish between strings and numbers in the data section
 
 
 #define ACS8(x)   *(uint8_t*)&(x)
@@ -66,11 +67,12 @@ enum {
     k_GOTO_N3,            // (16 bit programm address)
     k_GOSUB_N3,           // (16 bit programm address)
     k_RETURN_N1,          // (pop return address)
+    k_FOR_N1,             // (check stack overflow)
     k_NEXT_N4,            // (16 bit programm address), (variable)
     k_IF_N3,              // (pop val, END address)
-    k_READ_NUM_N4,        // (read const value from DATA section)
-    k_READ_STR_N4,        // (read string address from DATA section)
-    k_RESTORE_N2,         // (restore the read pointer)
+    k_READ_NUM_N1,        // (read const value from DATA section)
+    k_READ_STR_N1,        // (read string address from DATA section)
+    k_RESTORE_N1,         // (restore the data read pointer)
     k_ON_GOTO_N2,         // (on...goto with last number)
     k_ON_GOSUB_N2,        // (on...gosub with last number)
     k_SET_ARR_ELEM_N2,    // (set array element)
@@ -124,8 +126,8 @@ enum {
     ERASE, ELSE, HEXS, NIL,     // 176 - 179
     INSTR, ON, TRON, TROFF,     // 180 - 183
     FREE, RND, PARAMS, STRINGS, // 184 - 187
-    WHILE, EXIT, DATA, READ,    // 188 - 191
-    RESTORE,                    // 192
+    WHILE, LOOP, ENDIF, DATA,   // 188 - 191
+    READ, RESTORE,              // 192 - 193
 };
 
 // Symbol table
@@ -144,12 +146,15 @@ typedef struct {
     uint8_t  dsp;  // Data stack pointer
     uint8_t  csp;  // Call stack pointer
     uint8_t  psp;  // Parameter stack pointer
+    uint8_t  nested_loop_idx;
     uint32_t datastack[cfg_DATASTACK_SIZE];
     uint32_t callstack[cfg_STACK_SIZE];
     uint32_t paramstack[cfg_STACK_SIZE];
     uint32_t variables[cfg_NUM_VARS];
     uint8_t  code[cfg_MAX_CODE_SIZE];
-    uint16_t mem_start_addr;
+    uint16_t mem_start_addr;    // Search start address for a free memory block
+    uint16_t data_start_addr;   // Data section start address
+    uint16_t data_read_offs;    // Data section read offset
     uint8_t  heap[cfg_MEM_HEAP_SIZE];
 #ifdef cfg_STRING_SUPPORT
     char     strbuf[k_MAX_LINE_LEN];

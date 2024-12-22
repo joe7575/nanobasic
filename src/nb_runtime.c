@@ -271,13 +271,16 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             break;
         case k_DIM_ARR_N2:
             var = vm->code[vm->pc + 1];
+            if(vm->variables[var] > 0x7FFF) {
+                nb_mem_free(vm, vm->variables[var]);
+            }
             size = DPOP();
             addr = nb_mem_alloc(vm, (size + 1) * sizeof(uint32_t));
             if(addr == 0) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            memset(&vm->heap[addr & 0x7FFF], 0, size * sizeof(uint32_t));
+            memset(&vm->heap[addr & 0x7FFF], 0, (size + 1) * sizeof(uint32_t));
             vm->variables[var] = addr;
             vm->pc += 2;
             break;
@@ -304,19 +307,20 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
         case k_DIV_N1:
             tmp2 = DPOP();
             if(tmp2 == 0) {
-              nb_print("Error: Division by zero\n");
-              DPUSH(0);
+                nb_print("Error: Division by zero\n");
+                DPUSH(0);
             } else {
-              DTOP() = DTOP() / tmp2;
+                DTOP() = DTOP() / tmp2;
             }
             vm->pc += 1;
             break;
         case k_MOD_N1:
             tmp2 = DPOP();
             if(tmp2 == 0) {
-              DPUSH(0);
+                DPUSH(0);
             } else {
-              DTOP() = DTOP() % tmp2;
+                tmp2 = DTOP() % tmp2;
+                DTOP() = tmp2;
             }
             vm->pc += 1;
             break;
@@ -380,6 +384,13 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
         case k_RETURN_N1:
             vm->pc = (uint16_t)CPOP();
             break;
+        case k_FOR_N1:
+            if(++vm->nested_loop_idx > cfg_MAX_FOR_LOOPS) {
+                nb_print("Error: too many nested 'for' loops");
+                return NB_ERROR;
+            }
+            vm->pc += 1;
+            break;
         case k_NEXT_N4:
             // ID = ID + stack[-1]
             // IF ID <= stack[-2] GOTO start
@@ -392,6 +403,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
               vm->pc += 4;
               (void)DPOP();  // remove step value
               (void)DPOP();  // remove loop end value
+              vm->nested_loop_idx--;
             }
             break;
         case k_IF_N3:
@@ -401,35 +413,38 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
               vm->pc += 3;
             }
             break;
-        case k_READ_NUM_N4:
-            var = vm->code[vm->pc + 1];
-            addr = ACS16(vm->code[vm->pc + 2]);
-            offs1 = vm->variables[var];
-            if(addr + offs1 + 4 > vm->code_size) {
-                nb_print("Error: Data address out of bounds\n");
+        case k_READ_NUM_N1:
+            if(vm->data_start_addr + vm->data_read_offs + 4 > vm->code_size) {
+                nb_print("Error: Out of data\n");
                 return NB_ERROR;
             }
-            DPUSH(ACS32(vm->code[addr + offs1]));
-            vm->variables[var] += 4;
-            vm->pc += 4;
-            break;
-        case k_READ_STR_N4:
-            var = vm->code[vm->pc + 1];
-            addr = ACS16(vm->code[vm->pc + 2]);
-            offs1 = vm->variables[var] & 0xFFFF;
-            if(addr + offs1 + 4 > vm->code_size) {
-                nb_print("Error: Data address out of bounds\n");
+            tmp1 = ACS32(vm->code[vm->data_start_addr + vm->data_read_offs]);
+            if(tmp1 & k_DATA_STR_TAG) {
+                nb_print("Error: Data type mismatch\n");
                 return NB_ERROR;
             }
-            DPUSH(ACS32(vm->code[addr + offs1]));
-            vm->variables[var] += 4;
-            vm->pc += 4;
+            DPUSH(tmp1);
+            vm->data_read_offs += 4;
+            vm->pc += 1;
             break;
-        case k_RESTORE_N2:
-            var = vm->code[vm->pc + 1];
+        case k_READ_STR_N1:
+            if(vm->data_start_addr + vm->data_read_offs + 4 > vm->code_size) {
+                nb_print("Error: Out of data\n");
+                return NB_ERROR;
+            }
+            tmp1 = ACS32(vm->code[vm->data_start_addr + vm->data_read_offs]);
+            if((tmp1 & k_DATA_STR_TAG) != k_DATA_STR_TAG) {
+                nb_print("Error: Data type mismatch\n");
+                return NB_ERROR;
+            }
+            DPUSH(tmp1 & ~k_DATA_STR_TAG);
+            vm->data_read_offs += 4;
+            vm->pc += 1;
+            break;
+        case k_RESTORE_N1:
             offs1 = DPOP() * sizeof(uint32_t);
-            vm->variables[var] = offs1;
-            vm->pc += 2;
+            vm->data_read_offs = offs1;
+            vm->pc += 1;
             break;
 #ifdef cfg_ON_COMMANDS
         case k_ON_GOTO_N2:
@@ -720,6 +735,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
 #if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)
         case k_ALLOC_STR_N1:
             tmp2 = DPOP();  // fill char
+            tmp2 = get_string(vm, tmp2)[0];
             tmp1 = DPOP();  // string length
             addr = nb_mem_alloc(vm, tmp1 + 1);
             if(addr == 0) {

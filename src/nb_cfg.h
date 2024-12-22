@@ -23,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define cfg_STRING_SUPPORT     // enable string support
 //#define cfg_BYTE_ACCESS        // enable byte access to strings
 #define cfg_ON_COMMANDS        // enable ON/GOTO/GOSUB commands
-//#define cfg_BASIC_V2           // enable IF/THEN/ELSE and WHILE statement blocks
+#define cfg_BASIC_V2           // enable IF/THEN/ELSE/ENDIF and WHILE/LOOP statement blocks
 
 #define cfg_MAX_FOR_LOOPS       (4)   // nested FOR loops (2 values per FOR loop on the datastack)
 #define cfg_DATASTACK_SIZE      (16)  // value for data stack (for expression evaluation and FOR loop variables)

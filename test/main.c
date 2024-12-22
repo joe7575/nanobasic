@@ -84,17 +84,27 @@ int main(int argc, char* argv[]) {
     assert(nb_define_external_function("sleep", 1, (uint8_t[]){NB_NUM}, NB_NONE) == NB_XFUNC + 4);
     assert(nb_define_external_function("input", 1, (uint8_t[]){NB_STR}, NB_NUM) == NB_XFUNC + 5);
     assert(nb_define_external_function("input$", 1, (uint8_t[]){NB_STR}, NB_STR) == NB_XFUNC + 6);
-    assert(nb_define_external_function("cmd", 2, (uint8_t[]){NB_NUM, NB_ARR}, NB_NUM) == NB_XFUNC + 7);
+    assert(nb_define_external_function("bcmd", 3, (uint8_t[]){NB_NUM, NB_NUM, NB_ARR}, NB_NUM) == NB_XFUNC + 7);
+    assert(nb_define_external_function("cmd$", 3, (uint8_t[]){NB_NUM, NB_STR, NB_STR}, NB_STR) == NB_XFUNC + 8);
+    assert(nb_define_external_function("breq", 3, (uint8_t[]){NB_NUM, NB_NUM, NB_ARR}, NB_NUM) == NB_XFUNC + 9);
+    assert(nb_define_external_function("breq$", 3, (uint8_t[]){NB_NUM, NB_NUM, NB_ARR}, NB_STR) == NB_XFUNC + 10);
+    assert(nb_define_external_function("dclr", 1, (uint8_t[]){NB_NUM}, NB_NONE) == NB_XFUNC + 11);
+    assert(nb_define_external_function("dputs", 3, (uint8_t[]){NB_NUM, NB_NUM, NB_STR}, NB_NONE) == NB_XFUNC + 12);
+    assert(nb_define_external_function("chat", 1, (uint8_t[]){NB_STR}, NB_NONE) == NB_XFUNC + 13);
+    assert(nb_define_external_function("iname$", 1, (uint8_t[]){NB_STR}, NB_STR) == NB_XFUNC + 14);
+    assert(nb_define_external_function("door", 2, (uint8_t[]){NB_STR, NB_STR}, NB_NONE) == NB_XFUNC + 15);
 
     void *instance = nb_create();
+
     //FILE *fp = fopen("../examples/basicV2.bas", "r");
     //FILE *fp = fopen("../examples/lineno.bas", "r");
+    //FILE *fp = fopen("../examples/read_data.bas", "r");
     //FILE *fp = fopen("../examples/test.bas", "r");
     //FILE *fp = fopen("../examples/basis.bas", "r");
     //FILE *fp = fopen("../examples/ext_func.bas", "r");
-    //FILE *fp = fopen("../examples/read_data.bas", "r");
     //FILE *fp = fopen("../examples/on_gosub.bas", "r");
     FILE *fp = fopen("../examples/temp.bas", "r");
+
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
         return -1;
@@ -163,13 +173,65 @@ int main(int argc, char* argv[]) {
                 nb_push_str(instance, str);
             } else if(res == NB_XFUNC + 7) {
                 uint32_t arr[4];
-                // cmd
+                // bcmd
                 uint16_t addr = nb_pop_arr_addr(instance);
                 uint32_t cmd = nb_pop_num(instance);
                 nb_read_arr(instance, addr, (uint8_t*)arr, sizeof(arr));
-                nb_print("CMD %u: %u %u %u %u\n", cmd, arr[0], arr[1], arr[2], arr[3]);
+                nb_print("BCMD %u: %u %u %u %u\n", cmd, arr[0], arr[1], arr[2], arr[3]);
                 nb_push_num(instance, 3);
-             } else if(res >= NB_XFUNC + 8) {
+            } else if(res == NB_XFUNC + 8) {
+                char str[80];
+                // cmd$
+                uint32_t cmd = nb_pop_num(instance);
+                char *str1 = nb_pop_str(instance, str, 80);
+                char *str2 = nb_pop_str(instance, str, 80);
+                nb_print("CMD$ %u: %s %s\n", cmd, str1, str2);
+                nb_push_str(instance, "OK");
+            } else if(res == NB_XFUNC + 9) {
+                uint32_t arr[4];
+                // breq
+                uint16_t addr = nb_pop_arr_addr(instance);
+                uint32_t cmd = nb_pop_num(instance);
+                nb_read_arr(instance, addr, (uint8_t*)arr, sizeof(arr));
+                nb_print("BREQ %u: %u %u %u %u\n", cmd, arr[0], arr[1], arr[2], arr[3]);
+                nb_push_num(instance, 3);
+            } else if(res == NB_XFUNC + 10) {
+                char str[80];
+                // breq$
+                uint32_t cmd = nb_pop_num(instance);
+                char *str1 = nb_pop_str(instance, str, 80);
+                char *str2 = nb_pop_str(instance, str, 80);
+                nb_print("BREQ$ %u: %s %s\n", cmd, str1, str2);
+                nb_push_str(instance, "OK");
+            } else if(res == NB_XFUNC + 11) {
+                // dclr
+                uint8_t var = nb_pop_num(instance);
+                nb_print("DCLR %u\n", var);
+            } else if(res == NB_XFUNC + 12) {
+                // dputs
+                char str[80];
+                char *str1 = nb_pop_str(instance, str, 80);
+                uint16_t row = nb_pop_num(instance);
+                uint16_t addr = nb_pop_num(instance);
+                nb_print("DPUTS %u: %d %s\n", addr, row, str1);
+            } else if(res == NB_XFUNC + 13) {
+                // chat
+                char str[80];
+                char *str1 = nb_pop_str(instance, str, 80);
+                nb_print("CHAT: %s\n", str1);
+            } else if(res == NB_XFUNC + 14) {
+                // iname$
+                char str[80];
+                char *str1 = nb_pop_str(instance, str, 80);
+                nb_print("INAME$: %s\n", str1);
+                nb_push_str(instance, "OK");
+            } else if(res == NB_XFUNC + 15) {
+                // door
+                char str[80];
+                char *str1 = nb_pop_str(instance, str, 80);
+                char *str2 = nb_pop_str(instance, str, 80);
+                nb_print("DOOR: %s %s\n", str1, str2);
+            } else if(res >= NB_XFUNC + 16) {
                 nb_print("Unknown external function\n");
             }
         }
