@@ -1,5 +1,6 @@
 clrscr()
 setcur(1,1)
+start:
 gosub prnt_line
 print "|                         Test Report                      |"
 gosub prnt_line
@@ -120,6 +121,7 @@ for i = 1 to 4
   test_on:
 next
 
+restore
 for i = 1 to 2
     read var, s$
     print "  ";var;s$;
@@ -129,11 +131,11 @@ print "       |"
 
 print "| Time since program start = "; time();:print "sec                         |"
 name$ = input$("| Your name")
-setcur(30,22)
+setcur(30,23)
 print "-> Hello "; name$ ; SPC(21 - len(name$)); "|"
-age = input("| What is your age?") : setcur(60,23) : print "|"
+age = input("| What is your age?") : setcur(60,24) : print "|"
 print "| Next year you will be" age+1;"years old                       |"
-print "| Wait a moment..." : setcur(60,25) : print "|"
+print "| Wait a moment..." : setcur(60,26) : print "|"
 sleep(4)
 gosub prnt_line
 end

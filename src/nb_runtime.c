@@ -122,14 +122,8 @@ char *nb_pop_str(void *pv_vm, char *str, uint8_t len) {
 void nb_push_str(void *pv_vm, char *str) {
     t_VM *vm = pv_vm;
     if(vm->psp < cfg_STACK_SIZE) {
-        uint16_t len = strlen(str);
-        uint16_t addr = nb_mem_alloc(vm, len + 1);
-        if(addr == 0) {
-            nb_print("Error: Out of memory\n");
-            return;
-        }
-        strcpy((char*)&vm->heap[addr & 0x7FFF], str);
-        PPUSH(addr);
+        strncpy(vm->strbuf, str, sizeof(vm->strbuf));
+        PPUSH(STRBUF);
     }
 }
 

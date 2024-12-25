@@ -38,6 +38,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define MAX_LINE_LEN            61
 #define LAST_LINE               ((MAX_LINES - 1) * MAX_LINE_LEN)
 
+#define SETCUR                  (NB_XFUNC + 0)
+#define GETCURX                 (NB_XFUNC + 1)
+#define GETCURY                 (NB_XFUNC + 2)
+#define CLRSCR                  (NB_XFUNC + 3)
+#define CLRLINE                 (NB_XFUNC + 4)
+
 typedef struct {
     void *pv_vm;
     char *p_src;
@@ -234,30 +240,43 @@ static int create(lua_State *L) {
 static int run(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     uint16_t cycles = (uint16_t)luaL_checkinteger(L, 2);
+    uint8_t x, y;
+
     int res = NB_BUSY;
     if(C != NULL) {
         p_Cpu = C;
         while(cycles > 0 && res >= NB_BUSY) {
             res = nb_run(C->pv_vm, &cycles);
             if(res >= NB_XFUNC) {
-                if(res == NB_XFUNC) {
-                    // setcur
-                    uint8_t y = nb_pop_num(C->pv_vm);
-                    uint8_t x = nb_pop_num(C->pv_vm);
+                switch(res) {
+                case SETCUR:
+                    y = nb_pop_num(C->pv_vm);
+                    x = nb_pop_num(C->pv_vm);
                     C->xpos = MAX(1, MIN(x, MAX_LINE_LEN)) - 1;
                     C->ypos = MAX(1, MIN(y, MAX_LINES)) - 1;
-                } else if(res == NB_XFUNC + 1) {
-                    // clrscr
+                    break;
+                case GETCURX:
+                    nb_push_num(C->pv_vm, C->xpos + 1);
+                    break;
+                case GETCURY:
+                    nb_push_num(C->pv_vm, C->ypos + 1);
+                    break;
+                case CLRSCR:
                     memset(C->screen_buffer, ' ', sizeof(C->screen_buffer));
                     C->screen_buffer[sizeof(C->screen_buffer) - 1] = '\0';
                     C->xpos = 0;
                     C->ypos = 0;
-                } else if(res == NB_XFUNC + 2) {
-                    // clrline
-                    uint8_t y = nb_pop_num(C->pv_vm);
-                    C->ypos = MAX(1, MIN(y, MAX_LINES)) - 1;
+                    break;
+                case CLRLINE:
+                    y = nb_pop_num(C->pv_vm);
+                    if(y > 0) {
+                        C->ypos = MAX(1, MIN(y, MAX_LINES)) - 1;
+                    } else {
+                        C->xpos = 0;
+                    }
                     memset(C->screen_buffer + C->ypos * MAX_LINE_LEN, ' ', MAX_LINE_LEN);
-                } else {
+                    break;
+                default:
                     p_Cpu = NULL;
                     lua_pushinteger(L, res);
                     return 1;
@@ -653,9 +672,11 @@ static const luaL_Reg R[] = {
 /* }====================================================== */
 LUALIB_API int luaopen_nanobasiclib(lua_State *L) {
     nb_init();
-    assert(nb_define_external_function("setcur", 2, (uint8_t[]){NB_NUM, NB_NUM}, NB_NONE) == (NB_XFUNC + 0));
-    assert(nb_define_external_function("clrscr", 0, (uint8_t[]){}, NB_NONE) == (NB_XFUNC + 1));
-    assert(nb_define_external_function("clrline", 1, (uint8_t[]){NB_NUM}, NB_NONE) == (NB_XFUNC + 2));
+    assert(nb_define_external_function("setcur", 2, (uint8_t[]){NB_NUM, NB_NUM}, NB_NONE) == SETCUR);
+    assert(nb_define_external_function("getcurx", 0, (uint8_t[]){}, NB_NUM) == GETCURX);
+    assert(nb_define_external_function("getcury", 0, (uint8_t[]){}, NB_NUM) == GETCURY);
+    assert(nb_define_external_function("clrscr", 0, (uint8_t[]){}, NB_NONE) == CLRSCR);
+    assert(nb_define_external_function("clrline", 1, (uint8_t[]){NB_NUM}, NB_NONE) == CLRLINE);
     luaL_newmetatable(L, "nb_cpu");
     luaL_register(L, NULL, R);
     return 1;
