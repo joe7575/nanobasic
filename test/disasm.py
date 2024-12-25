@@ -40,11 +40,10 @@ while idx < len(words):
         opcode, bytes = Opcodes[byte]
         print("%04X: %-14s %02X " % (index, opcode, byte), end="")
         if bytes == 0:
-            bytes = int(words[idx+1], 16) + 1
-            idx += 1
+            bytes = int(words[idx+1], 16) + 2
             print('"', end="")
             for i in range(1, bytes):
-                print("%c" % int(words[idx+i], 16), end="")
+                print("%c" % int(words[idx+i+1], 16), end="")
             print('"')
         else:
             for i in range(1, bytes):

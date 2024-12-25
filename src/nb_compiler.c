@@ -257,6 +257,7 @@ uint16_t nb_compile(void *pv_vm, void *fp) {
         return 1;
     }
     memset(pCi, 0, sizeof(comp_inst_t));
+    memset(a_Symbol, 0, sizeof(a_Symbol));
 
     pCi->p_code = vm->code;
     CurrVarIdx = 0;
@@ -296,12 +297,12 @@ uint16_t nb_compile(void *pv_vm, void *fp) {
 void nb_dump_code(void *pv_vm) {
     t_VM *vm = pv_vm;
     for(uint16_t i = 0; i < vm->code_size; i++) {
-        nb_print("%02X ", vm->code[i]);
+        printf("%02X ", vm->code[i]);
         if((i % 32) == 31) {
-            nb_print("\n");
+            printf("\n");
         } 
     }
-    nb_print("\n");
+    printf("\n");
 }
 
 void nb_output_symbol_table(void *pv_vm) {
@@ -445,9 +446,11 @@ static uint8_t lookahead(void) {
     return pCi->next_tok;
 }
 
+#ifndef cfg_LINE_NUMBERS
 static uint8_t lookfurther(void) {
     return pCi->p_next[0];
 }
+#endif
 
 static bool end_of_line(void) {
     return lookahead() == 0;

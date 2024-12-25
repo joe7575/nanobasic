@@ -31,15 +31,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define STRBUF   1
 
 #define DPUSH(x) vm->datastack[(uint8_t)(vm->dsp++) % cfg_DATASTACK_SIZE] = x
-#define DPOP() vm->datastack[(uint8_t)(--vm->dsp) % cfg_DATASTACK_SIZE]
-#define DTOP() vm->datastack[(uint8_t)(vm->dsp - 1) % cfg_DATASTACK_SIZE]
-#define DPEEK(x) vm->datastack[(uint8_t)((vm->dsp + x)) % cfg_DATASTACK_SIZE]
+#define DPOP()   vm->datastack[(uint8_t)(--vm->dsp) % cfg_DATASTACK_SIZE]
+#define DTOP()   vm->datastack[(uint8_t)(vm->dsp - 1) % cfg_DATASTACK_SIZE]
+#define DPEEK(x) vm->datastack[(uint8_t)(vm->dsp + x) % cfg_DATASTACK_SIZE]
 
 #define CPUSH(x) vm->callstack[(uint8_t)(vm->csp++) % cfg_STACK_SIZE] = x
-#define CPOP() vm->callstack[(uint8_t)(--vm->csp) % cfg_STACK_SIZE]
+#define CPOP()   vm->callstack[(uint8_t)(--vm->csp) % cfg_STACK_SIZE]
 
 #define PPUSH(x) vm->paramstack[(uint8_t)(vm->psp++) % cfg_STACK_SIZE] = x
-#define PPOP() vm->paramstack[(uint8_t)(--vm->psp) % cfg_STACK_SIZE]
+#define PPOP()   vm->paramstack[(uint8_t)(--vm->psp) % cfg_STACK_SIZE]
 
 /***************************************************************************************************
 **    static function-prototypes
@@ -195,6 +195,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
 
     while((*p_cycles)-- > 1)
     {
+        //printf("[nanobasic] %08lX %04X = %02X\n", (uint64_t)vm, vm->pc, vm->code[vm->pc]);
         switch (vm->code[vm->pc])
         {
         case k_END:
@@ -366,7 +367,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             vm->pc = ACS16(vm->code[vm->pc + 1]);
             break;
         case k_GOSUB_N3:
-        if(vm->csp < cfg_STACK_SIZE) {
+            if(vm->csp < cfg_STACK_SIZE) {
                 CPUSH(vm->pc + 3);
                 vm->pc = ACS16(vm->code[vm->pc + 1]);
             } else {

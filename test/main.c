@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
     nb_dump_code(instance);
 
     while(res >= NB_BUSY) {
-        cycles = 500;
+        cycles = 50;
         while(cycles > 0 && res >= NB_BUSY && timeout <= time(NULL)) {
             res = nb_run(instance, &cycles);
             if(res == NB_BREAK) {
