@@ -132,6 +132,8 @@ uint16_t nb_mem_get_free(t_VM *p_vm) {
     for(int i = p_vm->mem_start_addr; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
         if(p_vm->heap[i] == k_MEM_FREE_TAG) {
             free += k_MEM_BLOCK_SIZE;
+        } else {
+            i += (p_vm->heap[i] - 1) * k_MEM_BLOCK_SIZE;
         }
     }
     return free;

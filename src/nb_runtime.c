@@ -211,7 +211,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             vm->pc += 1;
             break;
         case k_PRINT_VAL_N1:
-            nb_print("%d", DPOP());
+            nb_print("%u ", DPOP());
             vm->pc += 1;
             break;
         case k_PRINT_NEWL_N1:
@@ -326,7 +326,6 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             break;
         case k_AND_N1:
             tmp2 = DPOP();
-            tmp1 = DPOP();
             DTOP() = DTOP() && tmp2;
             vm->pc += 1;
             break;
@@ -612,7 +611,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             vm->pc += 2;
             break;
         case k_FREE_N1:
-            nb_print(" %u/%u/%u bytes free (code/data/heap)\n", cfg_MAX_CODE_SIZE - vm->code_size,
+            nb_print(" %u/%u/%u bytes free (code/data/heap)", cfg_MAX_CODE_SIZE - vm->code_size,
                 sizeof(vm->variables) - (vm->num_vars * sizeof(uint32_t)), nb_mem_get_free(vm));
         case k_RND_N1:
             tmp1 = DPOP();
@@ -734,7 +733,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
 #endif
 #if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)
         case k_ALLOC_STR_N1:
-            tmp2 = DPOP();  // fill char
+            tmp2 = DPOP();  // address of the fill char
             tmp2 = get_string(vm, tmp2)[0];
             tmp1 = DPOP();  // string length
             addr = nb_mem_alloc(vm, tmp1 + 1);
@@ -742,9 +741,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
                 nb_print("Error: Out of memory\n");
                 return NB_ERROR;
             }
-            for(uint16_t i = 0; i < tmp1; i++) {
-                vm->heap[(addr & 0x7fff) + i] = tmp2;
-            }
+            memset(&vm->heap[addr & 0x7FFF], tmp2, tmp1);
             vm->heap[(addr & 0x7fff) + tmp1] = 0;
             DPUSH(addr);
             vm->pc += 1;

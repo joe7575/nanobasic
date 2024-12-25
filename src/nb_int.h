@@ -21,7 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define k_MEM_BLOCK_SIZE    (8)     // Must be a multiple of 4 (real size is MIN_BLOCK_SIZE - 1)
 #define k_MEM_FREE_TAG      (0)     // Also used for number of blocks
-#define k_MAX_SYM_LEN       (8)     // Max. length of a symbol name incl. '\0'
+#define k_MAX_SYM_LEN       (10)    // Max. length of a symbol name incl. '\0'
 #define k_MAX_LINE_LEN      (128)   // Max. length of a line/string
 #define k_DATA_STR_TAG      (0x80000000) // To distinguish between strings and numbers in the data section
 
@@ -135,7 +135,7 @@ typedef struct {
     char name[k_MAX_SYM_LEN];
     uint8_t  type;   // Token type
     uint8_t  res;    // Reserved for future use
-    uint16_t value;  // Variable index (0..n) or label address
+    uint32_t value;  // Variable index (0..n) or label address
 } sym_t;
 
 // Virtual machine

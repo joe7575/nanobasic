@@ -288,6 +288,17 @@ static int get_screen_buffer(lua_State *L) {
     return 0;
 }
 
+static int clear_screen(lua_State *L) {
+    nb_cpu_t *C = check_vm(L);
+    if(C != NULL) {
+        memset(C->screen_buffer, ' ', sizeof(C->screen_buffer));
+        C->screen_buffer[sizeof(C->screen_buffer) - 1] = '\0';
+        C->xpos = 0;
+        C->ypos = 0;
+     }
+    return 0;
+}
+
 static int print(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
@@ -382,6 +393,7 @@ static int unpack_vm(lua_State *L) {
             return 1;
         }
     }
+    printf("unpack_vm failed (size mismatch)\n");
     lua_pushboolean(L, 0);
     return 1;
 }
@@ -618,6 +630,7 @@ static const luaL_Reg R[] = {
     {"get_variable_list",       get_variable_list},
     {"run",                     run},
     {"get_screen_buffer",       get_screen_buffer},
+    {"clear_screen",            clear_screen},
     {"print",                   print},
     {"dump_code",               dump_code},
     {"output_symbol_table",     output_symbol_table},

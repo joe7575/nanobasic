@@ -34,11 +34,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 // Expression result types
 typedef enum type_t {
-    e_ANY = 0,
+    e_NONE = NB_NONE,
     e_NUM = NB_NUM,
     e_STR = NB_STR,
     e_ARR = NB_ARR,
     e_CNST,
+    e_ANY,
 } type_t;
 
 // Define external function
@@ -99,14 +100,14 @@ static void compile_if(void);
 static void compile_goto(void);
 static void compile_gosub(void);
 static void compile_return(void);
-static void compile_var(uint8_t tok);
+static void compile_var(uint8_t type);
 static void compile_dim(void);
 static void remark(void);
 static void compile_print(void);
 static void debug_print(uint16_t lineno);
 static void compile_string(void);
 static void compile_end(void);
-static type_t compile_xfunc(void);
+static type_t compile_xfunc(uint8_t type);
 static void compile_break(void);
 #ifdef cfg_BYTE_ACCESS
 static void compile_set1(void);
@@ -402,7 +403,7 @@ static uint8_t next_token(void) {
         pCi->value = atoi(pCi->a_buff);
        return NUM;
     }
-    if(isalpha(pCi->a_buff[0])) {
+    if(isalpha(pCi->a_buff[0]) || pCi->a_buff[0] == '_') {
         uint16_t len = strlen(pCi->a_buff);
         uint8_t type = pCi->a_buff[len - 1] == '$' ? SID : ID;
 
@@ -413,9 +414,12 @@ static uint8_t next_token(void) {
         return EQ;
     }
     if(pCi->a_buff[0] == '<') {
-        // parse '<=' or '<'
+        // parse '<=', '<>', and '<'
         if (pCi->a_buff[1] == '=') {
             return LQ;
+        }
+        if (pCi->a_buff[1] == '>') {
+            return NQ;
         }
         return LE;
     }
@@ -439,6 +443,10 @@ static uint8_t lookahead(void) {
     }
     //nb_print("lookahead: %s\n", pCi->a_buff);
     return pCi->next_tok;
+}
+
+static uint8_t lookfurther(void) {
+    return pCi->p_next[0];
 }
 
 static bool end_of_line(void) {
@@ -483,8 +491,7 @@ static void compile_line(void) {
     uint8_t tok = lookahead();
     if(tok == ID || tok == LABEL) {
         uint16_t idx = pCi->sym_idx;
-        tok = lookahead();
-        if(tok == ':') {
+        if(lookfurther() == ':') {
             label();
             match(':');
             a_Symbol[idx].value = pCi->pc;
@@ -539,7 +546,7 @@ static void compile_stmt(void) {
     case WHILE: compile_while(); break;
 #endif
     case END: compile_end(); break;
-    case XFUNC: compile_xfunc(); break;
+    case XFUNC: compile_xfunc(e_NONE); break;
     case BREAK: compile_break(); break;
 #ifdef cfg_BYTE_ACCESS    
     case SET1: compile_set1(); break;
@@ -697,9 +704,9 @@ static void compile_if(void) {
 #ifdef cfg_BASIC_V2
         if(end_of_line()) {
             compile_if_V2(pos);
+            return;
         }
-    }
-#else
+#endif
         compile_stmts();
         ACS16(pCi->p_code[pos]) = pCi->pc;
     } else if(tok == GOTO) {
@@ -719,7 +726,6 @@ static void compile_if(void) {
         compile_stmts();
         ACS16(pCi->p_code[pos]) = pCi->pc;
     }
-#endif
 }
 
 static void compile_goto(void) {
@@ -823,7 +829,7 @@ static void compile_print(void) {
         pCi->p_code[pCi->pc++] = k_PRINT_NEWL_N1;
         return;
     }
-    while(tok && tok != ELSE) {
+    while(tok && tok != ELSE && tok != ':') {
         add_newline = true;
         if(tok == STR) {
             compile_string();
@@ -960,11 +966,14 @@ static void compile_end(void) {
     pCi->p_code[pCi->pc++] = k_END;
 }
 
-static type_t compile_xfunc(void) {
+static type_t compile_xfunc(uint8_t type) {
     uint8_t idx = sym_get(pCi->a_buff);
     uint8_t tok;
     if(idx >= NumXFuncs) {
         error("unknown external function", pCi->a_buff);
+    }
+    if(type != e_ANY && type != a_XFuncs[idx].return_type) {
+        error("syntax error", pCi->a_buff);
     }
     match('(');
     for(uint8_t i = 0; i < a_XFuncs[idx].num_params; i++) {
@@ -1609,7 +1618,20 @@ static type_t compile_factor(void) {
         match('(');
         compile_expression(e_NUM);
         match(',');
-        compile_expression(e_STR);
+        tok = lookahead();
+        if(tok == NUM) {
+            match(NUM);
+            if(pCi->value == 0) {
+                pCi->p_code[pCi->pc++] = k_PUSH_STR_Nx;
+                pCi->p_code[pCi->pc++] = 1; // len with leading 0
+                pCi->p_code[pCi->pc++] = 0;
+                //pCi->p_code[pCi->pc++] = 0;
+            } else {
+                error("syntax error", pCi->a_buff);
+            }
+        } else {
+            compile_expression(e_STR);
+        }
         match(')');
         pCi->p_code[pCi->pc++] = k_ALLOC_STR_N1;
         type = e_STR;
@@ -1632,7 +1654,7 @@ static type_t compile_factor(void) {
         break;
     case XFUNC:
         match(XFUNC);
-        type = compile_xfunc();
+        type = compile_xfunc(e_ANY);
         pCi->p_code[pCi->pc++] = k_PARAM_N1;
         break;
     case NIL:

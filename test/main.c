@@ -103,7 +103,8 @@ int main(int argc, char* argv[]) {
     //FILE *fp = fopen("../examples/basis.bas", "r");
     //FILE *fp = fopen("../examples/ext_func.bas", "r");
     //FILE *fp = fopen("../examples/on_gosub.bas", "r");
-    FILE *fp = fopen("../examples/temp.bas", "r");
+    //FILE *fp = fopen("../examples/temp.bas", "r");
+    FILE *fp = fopen(argv[1], "r");
 
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
@@ -118,11 +119,11 @@ int main(int argc, char* argv[]) {
     }
 
     nb_output_symbol_table(instance);
-    nb_print("\nNanoBasic Interpreter V1.0\n");
+    nb_print("\nNanoBasic Interpreter V%s\n", SVERSION);
     nb_dump_code(instance);
 
     while(res >= NB_BUSY) {
-        cycles = 50;
+        cycles = 500;
         while(cycles > 0 && res >= NB_BUSY && timeout <= time(NULL)) {
             res = nb_run(instance, &cycles);
             if(res == NB_BREAK) {
@@ -138,11 +139,11 @@ int main(int argc, char* argv[]) {
                 printf("read arr %d(%d) = %d\n", 3, 0, val);
             } else if(res == NB_XFUNC) {
                 // setcur
-                uint8_t x = nb_pop_num(instance);
                 uint8_t y = nb_pop_num(instance);
+                uint8_t x = nb_pop_num(instance);
                 x = MAX(1, MIN(x, 60));
-                y = MAX(1, MIN(y, 20));
-                nb_print("\033[%u;%uH", x, y);
+                y = MAX(1, MIN(y, 60));
+                nb_print("\033[%u;%uH", y, x);
             } else if(res == NB_XFUNC + 1) {
                 // clrscr
                 nb_print("\033[2J");
@@ -176,32 +177,35 @@ int main(int argc, char* argv[]) {
                 // bcmd
                 uint16_t addr = nb_pop_arr_addr(instance);
                 uint32_t cmd = nb_pop_num(instance);
+                uint32_t pos = nb_pop_num(instance);
                 nb_read_arr(instance, addr, (uint8_t*)arr, sizeof(arr));
-                nb_print("BCMD %u: %u %u %u %u\n", cmd, arr[0], arr[1], arr[2], arr[3]);
+                nb_print("BCMD %u: %u %u %u %u\n", pos, cmd, arr[0], arr[1], arr[2]);
                 nb_push_num(instance, 3);
             } else if(res == NB_XFUNC + 8) {
                 char str[80];
                 // cmd$
-                uint32_t cmd = nb_pop_num(instance);
-                char *str1 = nb_pop_str(instance, str, 80);
                 char *str2 = nb_pop_str(instance, str, 80);
-                nb_print("CMD$ %u: %s %s\n", cmd, str1, str2);
+                char *str1 = nb_pop_str(instance, str, 80);
+                uint32_t pos = nb_pop_num(instance);
+                nb_print("CMD$ %u: %s %s\n", pos, str1, str2);
                 nb_push_str(instance, "OK");
             } else if(res == NB_XFUNC + 9) {
                 uint32_t arr[4];
                 // breq
                 uint16_t addr = nb_pop_arr_addr(instance);
                 uint32_t cmd = nb_pop_num(instance);
+                uint32_t pos = nb_pop_num(instance);
                 nb_read_arr(instance, addr, (uint8_t*)arr, sizeof(arr));
-                nb_print("BREQ %u: %u %u %u %u\n", cmd, arr[0], arr[1], arr[2], arr[3]);
+                nb_print("BREQ %u: %u %u %u %u\n", pos, cmd, arr[0], arr[1], arr[2]);
                 nb_push_num(instance, 3);
             } else if(res == NB_XFUNC + 10) {
-                char str[80];
+                uint32_t arr[4];
                 // breq$
+                uint16_t addr = nb_pop_arr_addr(instance);
                 uint32_t cmd = nb_pop_num(instance);
-                char *str1 = nb_pop_str(instance, str, 80);
-                char *str2 = nb_pop_str(instance, str, 80);
-                nb_print("BREQ$ %u: %s %s\n", cmd, str1, str2);
+                uint32_t pos = nb_pop_num(instance);
+                nb_read_arr(instance, addr, (uint8_t*)arr, sizeof(arr));
+                nb_print("BREQ$ %u: %u %u %u %u\n", pos, cmd, arr[0], arr[1], arr[2]);
                 nb_push_str(instance, "OK");
             } else if(res == NB_XFUNC + 11) {
                 // dclr
