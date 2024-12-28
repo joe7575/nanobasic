@@ -69,14 +69,19 @@ int main(int argc, char* argv[]) {
     uint16_t cycles;
     uint16_t errors;
     uint32_t timeout = 0;
+#if defined(cfg_STRING_SUPPORT) && !defined(cfg_BYTE_ACCESS)
     uint32_t startval = time(NULL);
-    
+#endif
+
     if (argc != 2) {
         nb_print("Usage: %s <programm>\n", argv[0]);
         return 1;
     }
     nb_print("NanoBasic Compiler V1.0\n");
     nb_init();
+#if defined(cfg_BYTE_ACCESS) && !defined(cfg_STRING_SUPPORT)
+    assert(nb_define_external_function("send", 3, (uint8_t[]){NB_NUM, NB_NUM, NB_ARR}, NB_NONE) == NB_XFUNC + 0);
+#elif defined(cfg_STRING_SUPPORT)
     assert(nb_define_external_function("setcur", 2, (uint8_t[]){NB_NUM, NB_NUM}, NB_NONE) == NB_XFUNC + 0);
     assert(nb_define_external_function("clrscr", 0, (uint8_t[]){}, NB_NONE) == NB_XFUNC + 1);
     assert(nb_define_external_function("clrline", 1, (uint8_t[]){NB_NUM}, NB_NONE) == NB_XFUNC + 2);
@@ -84,28 +89,20 @@ int main(int argc, char* argv[]) {
     assert(nb_define_external_function("sleep", 1, (uint8_t[]){NB_NUM}, NB_NONE) == NB_XFUNC + 4);
     assert(nb_define_external_function("input", 1, (uint8_t[]){NB_STR}, NB_NUM) == NB_XFUNC + 5);
     assert(nb_define_external_function("input$", 1, (uint8_t[]){NB_STR}, NB_STR) == NB_XFUNC + 6);
-    assert(nb_define_external_function("bcmd", 3, (uint8_t[]){NB_NUM, NB_NUM, NB_ARR}, NB_NUM) == NB_XFUNC + 7);
-    assert(nb_define_external_function("cmd$", 3, (uint8_t[]){NB_NUM, NB_STR, NB_STR}, NB_STR) == NB_XFUNC + 8);
-    assert(nb_define_external_function("breq", 3, (uint8_t[]){NB_NUM, NB_NUM, NB_ARR}, NB_NUM) == NB_XFUNC + 9);
-    assert(nb_define_external_function("breq$", 3, (uint8_t[]){NB_NUM, NB_NUM, NB_ARR}, NB_STR) == NB_XFUNC + 10);
-    assert(nb_define_external_function("dclr", 1, (uint8_t[]){NB_NUM}, NB_NONE) == NB_XFUNC + 11);
-    assert(nb_define_external_function("dputs", 3, (uint8_t[]){NB_NUM, NB_NUM, NB_STR}, NB_NONE) == NB_XFUNC + 12);
-    assert(nb_define_external_function("chat", 1, (uint8_t[]){NB_STR}, NB_NONE) == NB_XFUNC + 13);
-    assert(nb_define_external_function("iname$", 1, (uint8_t[]){NB_STR}, NB_STR) == NB_XFUNC + 14);
-    assert(nb_define_external_function("door", 2, (uint8_t[]){NB_STR, NB_STR}, NB_NONE) == NB_XFUNC + 15);
+#endif
 
     void *instance = nb_create();
 
-    //FILE *fp = fopen("../examples/basicV2.bas", "r");
-    //FILE *fp = fopen("../examples/lineno.bas", "r");
-    //FILE *fp = fopen("../examples/read_data.bas", "r");
-    //FILE *fp = fopen("../examples/test.bas", "r");
-    //FILE *fp = fopen("../examples/basis.bas", "r");
-    //FILE *fp = fopen("../examples/ext_func.bas", "r");
-    //FILE *fp = fopen("../examples/on_gosub.bas", "r");
+#if defined(cfg_LINE_NUMBERS) && !defined(cfg_BASIC_V2)
+    FILE *fp = fopen("../examples/lineno.bas", "r");
+#elif defined(cfg_BYTE_ACCESS) && !defined(cfg_STRING_SUPPORT) && !defined(cfg_LINE_NUMBERS) 
+    FILE *fp = fopen("../examples/byte_access.bas", "r");
+#elif !defined(cfg_LINE_NUMBERS) && !defined(cfg_BASIC_V2)
+    FILE *fp = fopen("../examples/heron.bas", "r");
+#else
     //FILE *fp = fopen("../examples/temp.bas", "r");
     FILE *fp = fopen(argv[1], "r");
-
+#endif
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
         return -1;
@@ -117,6 +114,10 @@ int main(int argc, char* argv[]) {
     if(errors > 0) {
         return 1;
     }
+
+#if defined(cfg_BYTE_ACCESS) && !defined(cfg_STRING_SUPPORT)
+    uint16_t start = nb_get_label_address(instance, "start");
+#endif
 
     nb_output_symbol_table(instance);
     nb_print("\nNanoBasic Interpreter V%s\n", SVERSION);
@@ -137,6 +138,22 @@ int main(int argc, char* argv[]) {
                 }
                 val = nb_get_arr_elem(instance, 3, 0);
                 printf("read arr %d(%d) = %d\n", 3, 0, val);
+#if defined(cfg_BYTE_ACCESS) && !defined(cfg_STRING_SUPPORT)
+            } else if(res == NB_XFUNC) {
+                // send
+                uint8_t arr[80];
+                uint16_t addr = nb_pop_arr_addr(instance);
+                nb_read_arr(instance, addr, arr, 80);
+                uint32_t id = nb_pop_num(instance);
+                uint8_t port = nb_pop_num(instance);
+                nb_print("send on port %d: %u %02X %02X %02X %02X %08X\n", port, id, arr[0], arr[1], (uint8_t)arr[2], (uint8_t)arr[3], ACS32(arr[4]));
+                if(start > 0) {
+                    nb_set_pc(instance, start);
+                    nb_push_num(instance, 1);
+                    nb_push_num(instance, 2);
+                    nb_write_arr(instance, addr, "\x08\x07\x06\x05\x04\x03\x02\x01", 8);
+                }    
+#elif defined(cfg_STRING_SUPPORT)
             } else if(res == NB_XFUNC) {
                 // setcur
                 uint8_t y = nb_pop_num(instance);
@@ -172,70 +189,8 @@ int main(int argc, char* argv[]) {
                 fgets(str, 80, stdin);
                 str[strlen(str)-1] = '\0';
                 nb_push_str(instance, str);
-            } else if(res == NB_XFUNC + 7) {
-                uint32_t arr[4];
-                // bcmd
-                uint16_t addr = nb_pop_arr_addr(instance);
-                uint32_t cmd = nb_pop_num(instance);
-                uint32_t pos = nb_pop_num(instance);
-                nb_read_arr(instance, addr, (uint8_t*)arr, sizeof(arr));
-                nb_print("BCMD %u: %u %u %u %u\n", pos, cmd, arr[0], arr[1], arr[2]);
-                nb_push_num(instance, 3);
-            } else if(res == NB_XFUNC + 8) {
-                char str[80];
-                // cmd$
-                char *str2 = nb_pop_str(instance, str, 80);
-                char *str1 = nb_pop_str(instance, str, 80);
-                uint32_t pos = nb_pop_num(instance);
-                nb_print("CMD$ %u: %s %s\n", pos, str1, str2);
-                nb_push_str(instance, "OK");
-            } else if(res == NB_XFUNC + 9) {
-                uint32_t arr[4];
-                // breq
-                uint16_t addr = nb_pop_arr_addr(instance);
-                uint32_t cmd = nb_pop_num(instance);
-                uint32_t pos = nb_pop_num(instance);
-                nb_read_arr(instance, addr, (uint8_t*)arr, sizeof(arr));
-                nb_print("BREQ %u: %u %u %u %u\n", pos, cmd, arr[0], arr[1], arr[2]);
-                nb_push_num(instance, 3);
-            } else if(res == NB_XFUNC + 10) {
-                uint32_t arr[4];
-                // breq$
-                uint16_t addr = nb_pop_arr_addr(instance);
-                uint32_t cmd = nb_pop_num(instance);
-                uint32_t pos = nb_pop_num(instance);
-                nb_read_arr(instance, addr, (uint8_t*)arr, sizeof(arr));
-                nb_print("BREQ$ %u: %u %u %u %u\n", pos, cmd, arr[0], arr[1], arr[2]);
-                nb_push_str(instance, "OK");
-            } else if(res == NB_XFUNC + 11) {
-                // dclr
-                uint8_t var = nb_pop_num(instance);
-                nb_print("DCLR %u\n", var);
-            } else if(res == NB_XFUNC + 12) {
-                // dputs
-                char str[80];
-                char *str1 = nb_pop_str(instance, str, 80);
-                uint16_t row = nb_pop_num(instance);
-                uint16_t addr = nb_pop_num(instance);
-                nb_print("DPUTS %u: %d %s\n", addr, row, str1);
-            } else if(res == NB_XFUNC + 13) {
-                // chat
-                char str[80];
-                char *str1 = nb_pop_str(instance, str, 80);
-                nb_print("CHAT: %s\n", str1);
-            } else if(res == NB_XFUNC + 14) {
-                // iname$
-                char str[80];
-                char *str1 = nb_pop_str(instance, str, 80);
-                nb_print("INAME$: %s\n", str1);
-                nb_push_str(instance, "OK");
-            } else if(res == NB_XFUNC + 15) {
-                // door
-                char str[80];
-                char *str1 = nb_pop_str(instance, str, 80);
-                char *str2 = nb_pop_str(instance, str, 80);
-                nb_print("DOOR: %s %s\n", str1, str2);
-            } else if(res >= NB_XFUNC + 16) {
+#endif
+            } else if(res >= NB_XFUNC) {
                 nb_print("Unknown external function\n");
             }
         }

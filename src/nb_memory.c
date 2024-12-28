@@ -91,32 +91,15 @@ void nb_mem_free(t_VM *p_vm, uint16_t addr) {
     }
 }
 
+// Allocate a bigger block if necessary
 uint16_t nb_mem_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes) {
     if(addr > 0x7FFF && bytes <= cfg_MAX_MEM_BLOCK_SIZE) {
-        addr = (addr & 0x7FFF) - HEADER_SIZE;
-        uint16_t num_blocks = p_vm->heap[addr];
-        uint16_t new_num_blocks = NUM_BLOCKS(bytes);
-        uint16_t new_num_words = NUM_WORDS(bytes);
-        if(new_num_blocks == num_blocks) {
-            return 0x8000 + addr + HEADER_SIZE;
+        uint16_t buff_size = (p_vm->heap[(addr & 0x7FFF) - 1] * sizeof(uint32_t)) - HEADER_SIZE;
+        if(buff_size >= bytes) {
+            return addr;
         }
-        if(new_num_blocks < num_blocks) {
-            p_vm->heap[addr] = new_num_blocks;
-            p_vm->heap[addr + 1] = new_num_words;
-            uint16_t start = addr + new_num_blocks * k_MEM_BLOCK_SIZE;
-            uint16_t stop = addr + num_blocks * k_MEM_BLOCK_SIZE;
-            for(uint16_t i = start; i < stop; i += k_MEM_BLOCK_SIZE) {
-            p_vm->heap[i] = k_MEM_FREE_TAG;
-            }
-            return 0x8000 + addr + HEADER_SIZE;
-        }
-        uint16_t new = nb_mem_alloc(p_vm, bytes);
-        if(new == 0) {
-            return 0;
-        }
-        memcpy(&p_vm->heap[new & 0x7FFF], &p_vm->heap[addr + HEADER_SIZE], bytes);
-        nb_mem_free(p_vm, addr + HEADER_SIZE);
-        return new;
+        nb_mem_free(p_vm, addr);
+        return nb_mem_alloc(p_vm, bytes);
     }
     return 0;
 }

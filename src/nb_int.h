@@ -156,9 +156,9 @@ typedef struct {
     uint16_t data_start_addr;   // Data section start address
     uint16_t data_read_offs;    // Data section read offset
     uint8_t  heap[cfg_MEM_HEAP_SIZE];
-#ifdef cfg_STRING_SUPPORT
-    char     strbuf[k_MAX_LINE_LEN];
-#endif
+    char     strbuf1[k_MAX_LINE_LEN]; // temporary buffer for string operations
+    char     strbuf2[k_MAX_LINE_LEN]; // temporary buffer for string operations
+    bool     strbuf1_used;            // flag to indicate which buffer is used
 } t_VM;
 
 char *nb_scanner(char *p_in, char *p_out);

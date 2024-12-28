@@ -136,6 +136,19 @@ print "-> Hello "; name$ ; SPC(21 - len(name$)); "|"
 age = input("| What is your age?") : setcur(60,24) : print "|"
 print "| Next year you will be" age+1;"years old                       |"
 print "| Wait a moment..." : setcur(60,26) : print "|"
+
+s$ = "111***222***333"
+print "|      ", left$(s$, 3), mid$(s$, 7, 3), right$(s$, 3), str$(444), hex$(1365),
+s1$ = ":" + left$(s$, 3) + ":      |"
+print s1$
+print "|   ", left$(s$, 3) + mid$(s$, 7, 3) + right$(s$, 3), str$(_max), hex$(_max), "   |"
+print "|                   "; 
+print instr(1, s$, "1") instr(2, s$, "1") instr(1, s$, "2") instr(9, s$, "2") instr(1, s$, "3") instr(25, s$, "3");
+print "                    |" 
+
+v = val("1234567890")
+l = len("1234567890")
+print "|          v = 1234567890:";v;" l = 10:";l;"           |"
 sleep(4)
 gosub prnt_line
 end

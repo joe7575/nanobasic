@@ -86,7 +86,9 @@ static comp_inst_t *pCi = NULL;
 static bool get_line(void);
 static uint8_t next_token(void);
 static uint8_t lookahead(void);
+#ifdef cfg_BASIC_V2
 static bool end_of_line(void);
+#endif
 static uint8_t next(void);
 static void match(uint8_t expected);
 #ifndef cfg_LINE_NUMBERS
@@ -197,19 +199,19 @@ void nb_init(void) {
     sym_add("str$", 0, STRS);
     sym_add("spc", 0, SPC);
     sym_add("hex$", 0, HEXS);
-    sym_add("param$", 0, PARAMS);
     sym_add("nil", 0, NIL);
 #endif
 #if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)
     sym_add("string$", 0, STRINGS);
 #endif
+#ifdef cfg_BYTE_ACCESS
+    sym_add("param$", 0, PARAMS);
     sym_add("param", 0, PARAM);
+#endif
     sym_add("const", 0, CONST);
     sym_add("erase", 0, ERASE);
     sym_add("instr", 0, INSTR);
-#ifdef cfg_ON_COMMANDS
     sym_add("on", 0, ON);
-#endif     
     sym_add("tron", 0, TRON);
     sym_add("troff", 0, TROFF);
     sym_add("free", 0, FREE);
@@ -257,7 +259,11 @@ uint16_t nb_compile(void *pv_vm, void *fp) {
         return 1;
     }
     memset(pCi, 0, sizeof(comp_inst_t));
-    memset(a_Symbol, 0, sizeof(a_Symbol));
+    for(int i = StartOfVars; i < cfg_MAX_NUM_SYM; i++) {
+        a_Symbol[i].name[0] = '\0';
+        a_Symbol[i].type = 0;
+        a_Symbol[i].value = 0;
+    }
 
     pCi->p_code = vm->code;
     CurrVarIdx = 0;
@@ -452,9 +458,11 @@ static uint8_t lookfurther(void) {
 }
 #endif
 
+#ifdef cfg_BASIC_V2
 static bool end_of_line(void) {
     return lookahead() == 0;
 }
+#endif
 
 static uint8_t next(void) {
     if(pCi->p_pos == pCi->p_next) {
@@ -558,9 +566,7 @@ static void compile_stmt(void) {
     case COPY: compile_copy(); break;
 #endif
     case ERASE: compile_erase(); break;
-#ifdef cfg_ON_COMMANDS
     case ON: compile_on(); break;
-#endif
     case TRON: compile_tron(); break;
     case TROFF: compile_troff(); break;
     case FREE: compile_free(); break;
@@ -1030,7 +1036,7 @@ static void compile_copy(void) {
 static void compile_set(uint8_t instr) {
     uint8_t idx;
     match('(');
-    match(SID);
+    match(ARR);
     idx = pCi->sym_idx;
     match(',');
     compile_expression(e_NUM);
@@ -1045,7 +1051,7 @@ static void compile_get(uint8_t tok, uint8_t instr) {
     uint8_t idx;
     match(tok);
     match('(');
-    match(SID);
+    match(ARR);
     idx = pCi->sym_idx;
     match(',');
     compile_expression(e_NUM);
@@ -1076,7 +1082,6 @@ static void compile_erase(void) {
     }
 }
 
-#ifdef cfg_ON_COMMANDS
 static void compile_on(void) {
     uint16_t pos;
     uint8_t num;
@@ -1113,7 +1118,6 @@ static uint8_t list_of_numbers(void) {
     }
     return num;
 }
-#endif
 
 static void compile_tron(void) {
     pCi->trace_on = true;
@@ -1167,7 +1171,7 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type) {
     // Add new symbol
     for(uint16_t i = start; i < cfg_MAX_NUM_SYM; i++) {
         if(a_Symbol[i].name[0] == '\0') {
-            memcpy(a_Symbol[i].name, sym, MIN(strlen(sym), k_MAX_SYM_LEN));
+            strcpy(a_Symbol[i].name, sym);
             a_Symbol[i].value = val;
             a_Symbol[i].type = type;
             if(type != LABEL) {
@@ -1607,13 +1611,6 @@ static type_t compile_factor(void) {
         pCi->p_code[pCi->pc++] = k_INSTR_N1;
         type = e_NUM;
         break;
-    case PARAMS: // Move value from (external) parameter stack to the data stack
-        match(PARAMS);
-        match('(');
-        match(')');
-        pCi->p_code[pCi->pc++] = k_PARAMS_N1;
-        type = e_STR;
-        break;
 #endif
 #if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)        
     case STRINGS: // string$ function
@@ -1622,24 +1619,20 @@ static type_t compile_factor(void) {
         compile_expression(e_NUM);
         match(',');
         tok = lookahead();
-        if(tok == NUM) {
-            match(NUM);
-            if(pCi->value == 0) {
-                pCi->p_code[pCi->pc++] = k_PUSH_STR_Nx;
-                pCi->p_code[pCi->pc++] = 1; // len with leading 0
-                pCi->p_code[pCi->pc++] = 0;
-                //pCi->p_code[pCi->pc++] = 0;
-            } else {
-                error("syntax error", pCi->a_buff);
-            }
-        } else {
-            compile_expression(e_STR);
-        }
+        compile_expression(e_STR);
         match(')');
         pCi->p_code[pCi->pc++] = k_ALLOC_STR_N1;
         type = e_STR;
         break;
 #endif        
+#ifdef cfg_BYTE_ACCESS
+    case PARAMS: // Move value from (external) parameter stack to the data stack
+        match(PARAMS);
+        match('(');
+        match(')');
+        pCi->p_code[pCi->pc++] = k_PARAMS_N1;
+        type = e_STR;
+        break;
     case PARAM: // Move value from (external) parameter stack to the data stack
         match(PARAM);
         match('(');
@@ -1647,6 +1640,7 @@ static type_t compile_factor(void) {
         pCi->p_code[pCi->pc++] = k_PARAM_N1;
         type = e_NUM;
         break;
+#endif
     case RND: // Random number
         match(RND);
         match('(');
