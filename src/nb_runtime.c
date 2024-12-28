@@ -626,8 +626,8 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             str1 = get_string(vm, tmp1);
             str2 = get_string(vm, tmp2);
             ptr = alloc_temp_string(vm, &addr);
-            strncpy(ptr, str1, k_MAX_LINE_LEN);
-            strncat(ptr, str2, k_MAX_LINE_LEN);
+            strncpy(ptr, str1, k_MAX_LINE_LEN-1);
+            strncat(ptr, str2, k_MAX_LINE_LEN-1);
             DPUSH(addr);
             vm->pc += 1;
             break;
