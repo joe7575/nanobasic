@@ -55,7 +55,7 @@ char *nb_scanner(char *p_in, char *p_out) {
 
     while((c8 = *p_in) != 0) {
         if(c8 == '\'') {
-            while((c8 = *p_in) != '\n') {
+            while(*p_in != '\n' && *p_in != '\r' && *p_in != '\0') {
                 p_in++;
             }
             continue;

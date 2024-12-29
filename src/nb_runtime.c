@@ -28,7 +28,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "nb.h"
 #include "nb_int.h"
 
-#define STRBUF1  0x7FF1
+#define STRBUF1  0x7FF1 // temporary string buffers
 #define STRBUF2  0x7FF2
 
 #define DPUSH(x) vm->datastack[(uint8_t)(vm->dsp++) % cfg_DATASTACK_SIZE] = x
@@ -746,13 +746,10 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             tmp2 = DPOP();  // address of the fill char
             tmp2 = get_string(vm, tmp2)[0];
             tmp1 = DPOP();  // string length
-            addr = nb_mem_alloc(vm, tmp1 + 1);
-            if(addr == 0) {
-                nb_print("Error: Out of memory\n");
-                return NB_ERROR;
-            }
-            memset(&vm->heap[addr & 0x7FFF], tmp2, tmp1);
-            vm->heap[(addr & 0x7fff) + tmp1] = 0;
+            tmp1 = MIN(k_MAX_LINE_LEN - 1, tmp1);
+            ptr = alloc_temp_string(vm, &addr);
+            memset(ptr, tmp2, tmp1);
+            ptr[tmp1] = 0;
             DPUSH(addr);
             vm->pc += 1;
             break;

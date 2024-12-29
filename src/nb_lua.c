@@ -226,7 +226,6 @@ static int create(lua_State *L) {
             lua_pushinteger(L, errors);
             return 2;
         }
-        nb_dump_code(C->pv_vm); // for debugging
         luaL_getmetatable(L, "nb_cpu");
         lua_setmetatable(L, -2);
         lua_pushinteger(L, 0);

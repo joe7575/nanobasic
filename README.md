@@ -21,7 +21,7 @@ Most of the common BASIC keywords are supported:
     ERASE ( array-variable | string-variable$ )
     READ variable-list
     DATA ( constant-list | string-list )       ; Only at the end of the program
-    RESTORE "(" number ")"                     ; Number is offset (0..n), not line number
+    RESTORE [ number ]                         ; Number is offset (0..n), not line number
     RETURN
     END
     BREAK
@@ -40,16 +40,14 @@ Basic V2 features (optional):
         statements...
     [ ELSE
         statements... ]
-    END
+    ENDIF
 
     WHILE relation-expression
         statements...
-    END
+    LOOP
 
     variable = expression                                  ; without LET
     string-variable$ = string-expression$                  ; without LET
-
-    EXIT                                                   ; instead of END
 ```
 
 Supported data types are:
@@ -61,7 +59,14 @@ Supported data types are:
 
 The compiler is able to generate a binary file that can be executed by the virtual machine.
 The goal of NanoBasic was to be a small and fast, due to compiler and VM combination.
-The main purpose of NanoBasic is to be embedded in other applications, to provide a simple scripting language
-for configuration and as glue code.
+The main purpose of NanoBasic is to be embedded in other applications, to provide a
+simple scripting language for configuration and as glue code.
 
-The Basic language is inspired by the original Microsoft Basic known from Home Computers in the 80s.
+The Basic language is inspired by the original Microsoft Basic known from Home Computers
+in the 80s.
+
+This software also provides a Lua binding for using NanoBasic from Lua. The goal
+here is a Basic Computer as Luanti (Minetest) mods.
+See [nanobasic-mod](https://github.com/joe7575/nanobasic-mod)
+
+The software is licensed under the MIT license.

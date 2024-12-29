@@ -66,7 +66,7 @@ dim BR7(127)
 dim BR8(127)
 dim BR9(127)
 dim BRA(127)
-dim BRB(103) ' => 2000 bytes free
+dim BRB(99) ' => 2000 bytes free
 print "| "; : free : print "              |"
 erase BR
 erase BR1
@@ -135,7 +135,6 @@ setcur(30,23)
 print "-> Hello "; name$ ; SPC(21 - len(name$)); "|"
 age = input("| What is your age?") : setcur(60,24) : print "|"
 print "| Next year you will be" age+1;"years old                       |"
-print "| Wait a moment..." : setcur(60,26) : print "|"
 
 s$ = "111***222***333"
 print "|      ", left$(s$, 3), mid$(s$, 7, 3), right$(s$, 3), str$(444), hex$(1365),
@@ -149,6 +148,7 @@ print "                    |"
 v = val("1234567890")
 l = len("1234567890")
 print "|          v = 1234567890:";v;" l = 10:";l;"           |"
+print "| Wait a moment..." : setcur(60,30) : print "|"
 sleep(4)
 gosub prnt_line
 end

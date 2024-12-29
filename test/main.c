@@ -30,10 +30,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "nb.h"
 #include "nb_int.h"
 
-#define MAX_CODE_SIZE   (1024 * 16)
-
-extern void test_memory(void *p_vm);
-
 /* msleep(): Sleep for the requested number of milliseconds. */
 int msleep(uint32_t msec)
 {
@@ -43,13 +39,9 @@ int msleep(uint32_t msec)
     ts.tv_sec = msec / 1000;
     ts.tv_nsec = (msec % 1000) * 1000000;
 
-    //clock_t begin = clock();
     do {
         res = nanosleep(&ts, &ts);
     } while (res && errno == EINTR);
-    //clock_t end = clock();
-    //double time_spent = (double)(end - begin); //in microseconds
-    //printf("Time spent: %f\n", time_spent);
     return res;
 }
 
@@ -178,17 +170,19 @@ int main(int argc, char* argv[]) {
                 char str[80];
                 nb_pop_str(instance, str, 80);
                 nb_print("%s?  ", str);
-                fgets(str, 80, stdin);
-                str[strlen(str)-1] = '\0';
-                nb_push_num(instance, atoi(str));
+                //fgets(str, 80, stdin);
+                //str[strlen(str)-1] = '\0';
+                //nb_push_num(instance, atoi(str));
+                nb_push_num(instance, 12);
             } else if(res == NB_XFUNC + 6) {
                 // input$
                 char str[80];
                 nb_pop_str(instance, str, 80);
                 nb_print("%s?  ", str);
-                fgets(str, 80, stdin);
-                str[strlen(str)-1] = '\0';
-                nb_push_str(instance, str);
+                //fgets(str, 80, stdin);
+                //str[strlen(str)-1] = '\0';
+                //nb_push_str(instance, str);
+                nb_push_str(instance, "Joe");
 #endif
             } else if(res >= NB_XFUNC) {
                 nb_print("Unknown external function\n");

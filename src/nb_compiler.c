@@ -321,7 +321,8 @@ void nb_output_symbol_table(void *pv_vm) {
         if(a_Symbol[i].name[0] != '\0' && a_Symbol[i].type != LABEL)
         {
             nb_print("%2u: %-8s  %s\n", idx++, 
-                (a_Symbol[i].type == ID) ? "(number)" : (a_Symbol[i].type == SID) ? "(string)" : "(array)",
+                (a_Symbol[i].type == ID) ? "(number)" : (a_Symbol[i].type == SID) ? "(string)" : 
+                        (a_Symbol[i].type == e_CNST) ? "(const)": "(array)",
                 a_Symbol[i].name);
         }
     }
@@ -578,7 +579,7 @@ static void compile_stmt(void) {
 **   <Statement>...
 ** NEXT [ID]
 **
-** <Expression2>  and step counter are pushed on the data stack
+** <Expression2>  and <Expression3> are pushed on the data stack
 */
 static void compile_for(void) {
     uint16_t pc;
@@ -631,7 +632,6 @@ static void compile_for(void) {
 #ifdef cfg_BASIC_V2
 /*
 ** WHILE <Expression>
-** (not: goto end)
 **    <Statement>...
 ** LOOP
 */
@@ -639,10 +639,10 @@ static void compile_while(void) {
     uint16_t pos1, pos2;
     uint8_t tok;
 
-    pos1 = pCi->pc;
+    pos1 = pCi->pc; // start of loop
     compile_expression(e_NUM);
     pCi->p_code[pCi->pc++] = k_IF_N3;
-    pos2 = pCi->pc;
+    pos2 = pCi->pc; // end of loop
     pCi->pc += 2;
     while(get_line()) {
         tok = lookahead();
@@ -660,9 +660,7 @@ static void compile_while(void) {
 
 /*
 ** IF <Expression> THEN
-** (not: goto else)
 **    <Statement>...
-** (goto end)
 ** [ELSE
 **    <Statement>...]
 ** ENDIF
@@ -681,7 +679,7 @@ static void compile_if_V2(uint16_t pos1) {
 
     if(tok == ELSE) {
         pCi->p_code[pCi->pc++] = k_GOTO_N3;
-        pos2 = pCi->pc;
+        pos2 = pCi->pc; // end of else
         pCi->pc += 2;
         ACS16(pCi->p_code[pos1]) = pCi->pc;
 
@@ -705,7 +703,7 @@ static void compile_if(void) {
 
     compile_expression(e_NUM);
     pCi->p_code[pCi->pc++] = k_IF_N3;
-    uint16_t pos = pCi->pc;
+    uint16_t pos = pCi->pc; // end of if
     pCi->pc += 2;
     tok = lookahead();
     if(tok == THEN) {
@@ -730,7 +728,7 @@ static void compile_if(void) {
         match(ELSE);
         pCi->p_code[pCi->pc++] = k_GOTO_N3; // goto END
         ACS16(pCi->p_code[pos]) = pCi->pc + 2;
-        pos = pCi->pc;
+        pos = pCi->pc; // end of else
         pCi->pc += 2;
         compile_stmts();
         ACS16(pCi->p_code[pos]) = pCi->pc;
@@ -1282,11 +1280,6 @@ static void append_data_to_code(t_VM *vm) {
         error("code size exceeded", NULL);
     }
     for(int i = 0; i < pCi->data_idx; i++) {
-        if(pCi->a_data[i] & k_DATA_STR_TAG) {
-            printf("data: %s\n", (char*)&pCi->p_code[pCi->a_data[i] & ~k_DATA_STR_TAG]);
-        } else {
-            printf("data: %08X\n", pCi->a_data[i]);
-        }
         ACS32(pCi->p_code[pCi->pc]) = pCi->a_data[i];
         pCi->pc += 4;
     }

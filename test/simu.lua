@@ -25,8 +25,8 @@ local NB_ARR      = 3
 -- Return values of 'nb_run()'
 local NB_END      = 0  -- programm end reached
 local NB_ERROR    = 1  -- error in programm
-local NB_BUSY     = 2  -- programm still running
-local NB_BREAK    = 3  -- break command
+local NB_BREAK    = 2  -- break command
+local NB_BUSY     = 3  -- programm still running
 local NB_XFUNC    = 4  -- 'call' external function
 
 local nblib = require("nanobasiclib")
@@ -37,7 +37,7 @@ local script = [[1 REM NanoBasic example for a configuration with line numbers
 20 REM this is a comment too
 30 ' Variable declaration
 40 a = 10
-50 let B$ = string$(10, 0)
+50 let B$ = string$(10, "*")
 60 dim Arr(10)
 70 Arr(0) = 2: Arr(2) = 4: Arr(4) = 6: Arr(6) = 8: Arr(8) = 10
 100 ' For loops
@@ -68,8 +68,8 @@ local script = [[1 REM NanoBasic example for a configuration with line numbers
 ]]
 
 local function test()
-    print("Version: V", nblib.version())
-    print("Sleep:  ", nblib.add_function("sleep", {NB_NUM}, NB_NONE))
+    print("Version: V" .. nblib.version())
+    print(nblib.free_mem())
     local vm, sts = nblib.create(script)
     print("Create: ", sts, vm)
     if sts ~= 0 then
@@ -77,11 +77,13 @@ local function test()
         return
     end
     print(nblib.run(vm, 1000))
+    print(nblib.get_screen_buffer(vm))
     local s = nblib.pack_vm(vm)
     print(#s)
     nblib.unpack_vm(vm, s)
     print(nblib.reset(vm))
     print(nblib.run(vm, 1000))
+    print(nblib.get_screen_buffer(vm))
     nblib.destroy(vm)
 end
 
