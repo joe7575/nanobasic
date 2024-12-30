@@ -569,6 +569,7 @@ static void compile_stmt(void) {
     case TRON: compile_tron(); break;
     case TROFF: compile_troff(); break;
     case FREE: compile_free(); break;
+    case ':': break;
     default: error("syntax error", pCi->a_buff); break;
     }
 }

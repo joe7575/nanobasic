@@ -114,6 +114,8 @@ int main(int argc, char* argv[]) {
 #endif
 #if defined(cfg_LINE_NUMBERS)
     uint16_t error = nb_get_label_address(instance, "1000");
+#else
+    uint16_t error = 0;
 #endif
 
     nb_output_symbol_table(instance);
