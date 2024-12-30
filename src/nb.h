@@ -36,6 +36,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define NB_NUM      (1)
 #define NB_STR      (2)
 #define NB_ARR      (3)
+#define NB_ANY      (4)
 
 /*
 ** Return values of 'nb_run()'
@@ -87,6 +88,9 @@ uint32_t nb_pop_num(void *pv_vm);
 void nb_push_num(void *pv_vm, uint32_t value);
 char *nb_pop_str(void *pv_vm, char *str, uint8_t len);
 void nb_push_str(void *pv_vm, char *str);
+
+// @param idx = stack position (1..n) 1 = top of stack
+uint32_t nb_peek_num(void *pv_vm, uint8_t idx);
 
 /*
 ** Array access functions

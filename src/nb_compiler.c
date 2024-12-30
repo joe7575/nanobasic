@@ -38,8 +38,8 @@ typedef enum type_t {
     e_NUM = NB_NUM,
     e_STR = NB_STR,
     e_ARR = NB_ARR,
+    e_ANY = NB_ANY,
     e_CNST,
-    e_ANY,
 } type_t;
 
 // Define external function
@@ -204,10 +204,8 @@ void nb_init(void) {
 #if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)
     sym_add("string$", 0, STRINGS);
 #endif
-#ifdef cfg_BYTE_ACCESS
     sym_add("param$", 0, PARAMS);
     sym_add("param", 0, PARAM);
-#endif
     sym_add("const", 0, CONST);
     sym_add("erase", 0, ERASE);
     sym_add("instr", 0, INSTR);
@@ -989,6 +987,10 @@ static type_t compile_xfunc(uint8_t type) {
         tok = lookahead();
         if(tok == ',') {
             match(',');
+        } else if(tok == ')') {
+            break;
+        } else {
+            error("syntax error", pCi->a_buff);
         }
     }
     pCi->p_code[pCi->pc++] = k_XFUNC_N2;
@@ -1618,7 +1620,6 @@ static type_t compile_factor(void) {
         type = e_STR;
         break;
 #endif        
-#ifdef cfg_BYTE_ACCESS
     case PARAMS: // Move value from (external) parameter stack to the data stack
         match(PARAMS);
         match('(');
@@ -1633,7 +1634,6 @@ static type_t compile_factor(void) {
         pCi->p_code[pCi->pc++] = k_PARAM_N1;
         type = e_NUM;
         break;
-#endif
     case RND: // Random number
         match(RND);
         match('(');

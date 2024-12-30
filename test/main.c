@@ -81,6 +81,8 @@ int main(int argc, char* argv[]) {
     assert(nb_define_external_function("sleep", 1, (uint8_t[]){NB_NUM}, NB_NONE) == NB_XFUNC + 4);
     assert(nb_define_external_function("input", 1, (uint8_t[]){NB_STR}, NB_NUM) == NB_XFUNC + 5);
     assert(nb_define_external_function("input$", 1, (uint8_t[]){NB_STR}, NB_STR) == NB_XFUNC + 6);
+    assert(nb_define_external_function("cmd", 3, (uint8_t[]){NB_NUM, NB_ANY, NB_ANY}, NB_NUM) == NB_XFUNC + 7);
+    assert(nb_define_external_function("sval$", 1, (uint8_t[]){NB_NUM}, NB_STR) == NB_XFUNC + 8);
 #endif
 
     void *instance = nb_create();
@@ -109,6 +111,9 @@ int main(int argc, char* argv[]) {
 
 #if defined(cfg_BYTE_ACCESS) && !defined(cfg_STRING_SUPPORT)
     uint16_t start = nb_get_label_address(instance, "start");
+#endif
+#if defined(cfg_LINE_NUMBERS)
+    uint16_t error = nb_get_label_address(instance, "1000");
 #endif
 
     nb_output_symbol_table(instance);
@@ -184,6 +189,40 @@ int main(int argc, char* argv[]) {
                 //nb_push_str(instance, str);
                 nb_push_str(instance, "Joe");
 #endif
+            } else if(res == NB_XFUNC + 7) {
+                // cmd
+                uint8_t depth = nb_stack_depth(instance);
+                if(depth == 3) {
+                    uint32_t val1 = nb_peek_num(instance, 3);
+                    if(val1 >= 128) {
+                        char buff[80];
+                        char *str3 = nb_pop_str(instance, buff, 80);
+                        uint32_t val2 = nb_pop_num(instance);
+                        nb_print("cmd on port %u, %u, %s\n", val1, val2, str3);
+                    } else {
+                        uint32_t val3 = nb_pop_num(instance);
+                        uint32_t val2 = nb_pop_num(instance);
+                        nb_print("cmd on port %u, %u, %u\n", val1, val2, val3);
+                    }
+                    nb_pop_num(instance);
+                    nb_push_num(instance, -1);
+                } else if(depth == 2) {
+                    uint32_t val2 = nb_pop_num(instance);
+                    uint32_t val1 = nb_pop_num(instance);
+                    nb_print("cmd on port %u, %u\n", val1, val2);
+                    nb_push_num(instance, 0);
+                    nb_set_pc(instance, error);
+                    nb_push_num(instance, 3);
+                } else {
+                    nb_print("Error: wrong number of parameters\n");
+                    nb_push_num(instance, -3);
+                }
+            } else if(res == NB_XFUNC + 8) {
+                // sval$
+                char buff[80];
+                uint32_t val = nb_pop_num(instance);
+                sprintf(buff, "%d", (int32_t)val);
+                nb_push_str(instance, buff);
             } else if(res >= NB_XFUNC) {
                 nb_print("Unknown external function\n");
             }

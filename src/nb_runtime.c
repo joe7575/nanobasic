@@ -105,6 +105,15 @@ uint32_t nb_pop_num(void *pv_vm) {
     return PPOP();
 }
 
+// @param idx = stack position (1..n) 1 = top of stack
+uint32_t nb_peek_num(void *pv_vm, uint8_t idx) {
+    t_VM *vm = pv_vm;
+    if(vm->psp < idx) {
+        return -1;
+    }
+    return vm->paramstack[(vm->psp - idx) % cfg_STACK_SIZE];
+}
+
 void nb_push_num(void *pv_vm, uint32_t value) {
     t_VM *vm = pv_vm;
     if(vm->psp < cfg_STACK_SIZE) {
