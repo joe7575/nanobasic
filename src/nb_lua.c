@@ -451,6 +451,17 @@ static int stack_depth(lua_State *L) {
     return 0;
 }
 
+static int peek_num(lua_State *L) {
+    nb_cpu_t *C = check_vm(L);
+    if(C != NULL) {
+        uint8_t idx = luaL_checkinteger(L, 2);
+        uint32_t res = nb_peek_num(C->pv_vm, idx);
+        lua_pushinteger(L, res);
+        return 1;
+    }
+    return 0;
+}
+
 static int pop_num(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
@@ -656,6 +667,7 @@ static const luaL_Reg R[] = {
     {"get_label_address",       get_label_address},
     {"set_pc",                  set_pc},
     {"stack_depth",             stack_depth},
+    {"peek_num",                peek_num},
     {"pop_num",                 pop_num},
     {"push_num",                push_num},
     {"pop_str",                 pop_str},
