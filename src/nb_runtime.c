@@ -69,7 +69,7 @@ void nb_reset(void *pv_vm) {
 /*
 ** Debug Interface
 */
-uint32_t nb_get_number(void *pv_vm, uint8_t var) {
+int32_t nb_get_number(void *pv_vm, uint8_t var) {
     t_VM *vm = pv_vm;
     if(var >= cfg_NUM_VARS) {
         return 0;
@@ -85,7 +85,7 @@ char *nb_get_string(void *pv_vm, uint8_t var) {
     return get_string(vm, vm->variables[var]);
 }
 
-uint32_t nb_get_arr_elem(void *pv_vm, uint8_t var, uint16_t idx) {
+int32_t nb_get_arr_elem(void *pv_vm, uint8_t var, uint16_t idx) {
     t_VM *vm = pv_vm;
     if(var >= cfg_NUM_VARS) {
         return 0;
@@ -97,7 +97,7 @@ uint32_t nb_get_arr_elem(void *pv_vm, uint8_t var, uint16_t idx) {
 /*
 ** External function interface
 */
-uint32_t nb_pop_num(void *pv_vm) {
+int32_t nb_pop_num(void *pv_vm) {
     t_VM *vm = pv_vm;
     if(vm->psp == 0) {
         return 0;
@@ -106,7 +106,7 @@ uint32_t nb_pop_num(void *pv_vm) {
 }
 
 // @param idx = stack position (1..n) 1 = top of stack
-uint32_t nb_peek_num(void *pv_vm, uint8_t idx) {
+int32_t nb_peek_num(void *pv_vm, uint8_t idx) {
     t_VM *vm = pv_vm;
     if(vm->psp < idx) {
         return -1;
@@ -114,7 +114,7 @@ uint32_t nb_peek_num(void *pv_vm, uint8_t idx) {
     return vm->paramstack[(vm->psp - idx) % cfg_STACK_SIZE];
 }
 
-void nb_push_num(void *pv_vm, uint32_t value) {
+void nb_push_num(void *pv_vm, int32_t value) {
     t_VM *vm = pv_vm;
     if(vm->psp < cfg_STACK_SIZE) {
         PPUSH(value);
@@ -195,7 +195,7 @@ void nb_set_pc(void * pv_vm, uint16_t addr) {
 ** Run the programm
 */
 uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
-    uint32_t tmp1, tmp2;
+    int32_t tmp1, tmp2;
     uint16_t idx;
     uint16_t addr, size;
     uint16_t offs1;
@@ -221,7 +221,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             vm->pc += 1;
             break;
         case k_PRINT_VAL_N1:
-            nb_print("%u ", DPOP());
+            nb_print("%d ", DPOP());
             vm->pc += 1;
             break;
         case k_PRINT_NEWL_N1:
@@ -344,6 +344,10 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             break;
         case k_NOT_N1:
             DTOP() = !DTOP();
+            vm->pc += 1;
+            break;
+        case k_NEG_N1:
+            DTOP() = -DTOP();
             vm->pc += 1;
             break;
         case k_EQUAL_N1:
@@ -723,7 +727,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             break;
         case k_VAL_TO_STR_N1:
             tmp1 = DPOP();
-            snprintf(alloc_temp_string(vm, &addr), sizeof(vm->strbuf1), "%u", tmp1);
+            snprintf(alloc_temp_string(vm, &addr), sizeof(vm->strbuf1), "%d", tmp1);
             DPUSH(addr);
             vm->pc += 1;
             break;

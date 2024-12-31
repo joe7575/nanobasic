@@ -84,13 +84,13 @@ void nb_set_pc(void * pv_vm, uint16_t addr);
 ** Stack/parameter functions
 */
 uint8_t nb_stack_depth(void *pv_vm);
-uint32_t nb_pop_num(void *pv_vm);
-void nb_push_num(void *pv_vm, uint32_t value);
+int32_t nb_pop_num(void *pv_vm);
+void nb_push_num(void *pv_vm, int32_t value);
 char *nb_pop_str(void *pv_vm, char *str, uint8_t len);
 void nb_push_str(void *pv_vm, char *str);
 
 // @param idx = stack position (1..n) 1 = top of stack
-uint32_t nb_peek_num(void *pv_vm, uint8_t idx);
+int32_t nb_peek_num(void *pv_vm, uint8_t idx);
 
 /*
 ** Array access functions

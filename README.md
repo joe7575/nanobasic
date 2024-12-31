@@ -52,7 +52,7 @@ Basic V2 features (optional):
 
 Supported data types are:
 
-- Unsigned Integer, 32 bit (0 to 4294967295)
+- Signed Integer, 32 bit (-2,147,483,648 to 2,147,483,647)
 - String (up to 120 characters)
 - Array (one dimension, up to 128 elements)
 - Constant (numeric only)

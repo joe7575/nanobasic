@@ -58,6 +58,7 @@ enum {
     k_AND_N1,             // (pop two values from stack)
     k_OR_N1,              // (pop two values from stack)
     k_NOT_N1,             // (pop one value from stack)
+    k_NEG_N1,             // (negate)
     k_EQUAL_N1,           // (compare two values from stack)
     k_NOT_EQUAL_N1,       // (compare two values from stack)
     k_LESS_N1,            // (compare two values from stack)     
@@ -147,9 +148,9 @@ typedef struct {
     uint8_t  csp;  // Call stack pointer
     uint8_t  psp;  // Parameter stack pointer
     uint8_t  nested_loop_idx;
-    uint32_t datastack[cfg_DATASTACK_SIZE];
-    uint32_t callstack[cfg_STACK_SIZE];
-    uint32_t paramstack[cfg_STACK_SIZE];
+    int32_t  datastack[cfg_DATASTACK_SIZE];
+    uint16_t callstack[cfg_STACK_SIZE];
+    int32_t  paramstack[cfg_STACK_SIZE];
     uint32_t variables[cfg_NUM_VARS];
     uint8_t  code[cfg_MAX_CODE_SIZE];
     uint16_t mem_start_addr;    // Search start address for a free memory block
@@ -163,9 +164,9 @@ typedef struct {
 
 char *nb_scanner(char *p_in, char *p_out);
 sym_t *nb_get_symbol_table(uint16_t *p_start_idx);
-uint32_t nb_get_number(void *pv_vm, uint8_t var);
+int32_t nb_get_number(void *pv_vm, uint8_t var);
 char *nb_get_string(void *pv_vm, uint8_t var);
-uint32_t nb_get_arr_elem(void *pv_vm, uint8_t var, uint16_t idx);
+int32_t nb_get_arr_elem(void *pv_vm, uint8_t var, uint16_t idx);
 void nb_mem_init(t_VM *p_vm);
 uint16_t nb_mem_alloc(t_VM *p_vm, uint16_t bytes);
 void nb_mem_free(t_VM *p_vm, uint16_t addr);

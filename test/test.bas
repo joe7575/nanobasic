@@ -5,7 +5,7 @@ gosub prnt_line
 print "|                         Test Report                      |"
 gosub prnt_line
 
-const MAX = 4294967295
+const MAX = 2147483647
 _max = MAX
 print "| The largest number is" _max "                       |"
 print "| The almost largest number is" _max - 1 "                |"
@@ -127,7 +127,9 @@ for i = 1 to 2
     print "  ";var;s$;
 next
 
-print "       |"
+const min = -2147483648
+if -2147483647 > min then print "  16";
+print "   |"
 
 print "| Time since program start = "; time();:print "sec                         |"
 name$ = input$("| Your name")

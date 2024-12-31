@@ -145,6 +145,7 @@ static type_t compile_not_expr(void);
 static type_t compile_comp_expr(void);
 static type_t compile_add_expr(void);
 static type_t compile_term(void);
+static type_t compile_neg_factor(void);
 static type_t compile_factor(void);
 
 /*************************************************************************************************
@@ -782,7 +783,7 @@ static void compile_var(uint8_t tok) {
         pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
     } else if(tok == ID) { // let a = expression
         match(EQ);
-        type = compile_expression(e_ANY);
+        type = compile_expression(e_NUM);
         if(type == e_NUM) {
             // Var[value] = pop()
             pCi->p_code[pCi->pc++] = k_POP_VAR_N2;
@@ -1064,12 +1065,18 @@ static void compile_get(uint8_t tok, uint8_t instr) {
 
 #ifdef cfg_BASIC_V2
 static void compile_const(void) {
+    uint32_t factor = 1;
     next();
     uint16_t idx = pCi->sym_idx;
     match(EQ);
+    uint8_t tok = lookahead();
+    if(tok == '-') {
+        match('-');
+        factor = -1;
+    }
     match(NUM);
     a_Symbol[idx].type = e_CNST;
-    a_Symbol[idx].value = pCi->value;
+    a_Symbol[idx].value = pCi->value * factor;
 }
 #endif
 
@@ -1411,11 +1418,11 @@ static type_t compile_add_expr(void) {
 }
 
 static type_t compile_term(void) {
-    type_t type1 = compile_factor();
+    type_t type1 = compile_neg_factor();
     uint8_t op = lookahead();
     while(op == '*' || op == '/' || op == MOD) {
         match(op);
-        type_t type2 = compile_factor();
+        type_t type2 = compile_neg_factor();
         if(type1 != e_NUM || type2 != e_NUM) {
             error("type mismatch", pCi->a_buff);
         }
@@ -1429,6 +1436,19 @@ static type_t compile_term(void) {
         op = lookahead();
     }
     return type1;
+}
+
+static type_t compile_neg_factor(void) {
+    type_t type = 0;
+    uint8_t tok = lookahead();
+    if(tok == '-') {
+        match('-');
+        type = compile_factor();
+        pCi->p_code[pCi->pc++] = k_NEG_N1;
+    } else {
+        type = compile_factor();
+    }
+    return type;
 }
 
 static type_t compile_factor(void) {

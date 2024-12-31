@@ -200,11 +200,11 @@ int main(int argc, char* argv[]) {
                         char buff[80];
                         char *str3 = nb_pop_str(instance, buff, 80);
                         uint32_t val2 = nb_pop_num(instance);
-                        nb_print("cmd on port %u, %u, %s\n", val1, val2, str3);
+                        nb_print("cmd on port %u, %d, %s\n", val1, val2, str3);
                     } else {
                         uint32_t val3 = nb_pop_num(instance);
                         uint32_t val2 = nb_pop_num(instance);
-                        nb_print("cmd on port %u, %u, %u\n", val1, val2, val3);
+                        nb_print("cmd on port %u, %d, %d\n", val1, val2, val3);
                     }
                     nb_pop_num(instance);
                     nb_push_num(instance, -1);
