@@ -69,4 +69,14 @@ This software also provides a Lua binding for using NanoBasic from Lua. The goal
 here is a Basic Computer as Luanti (Minetest) mods.
 See [nanobasic-mod](https://github.com/joe7575/nanobasic-mod)
 
+### License
+
+Copyright (C) 2024-2025 Joachim Stolberg
+
 The software is licensed under the MIT license.
+
+### History
+
+**2025-01-01 V1.0.0**
+
+- First release

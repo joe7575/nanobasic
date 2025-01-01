@@ -1,6 +1,6 @@
 /*
 
-Copyright 2024 Joachim Stolberg
+Copyright 2024-2025 Joachim Stolberg
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software
 and associated documentation files (the “Software”), to deal in the Software without restriction,
@@ -94,8 +94,8 @@ int main(int argc, char* argv[]) {
 #elif !defined(cfg_LINE_NUMBERS) && !defined(cfg_BASIC_V2)
     FILE *fp = fopen("../examples/heron.bas", "r");
 #else
-    //FILE *fp = fopen("../examples/temp.bas", "r");
-    FILE *fp = fopen(argv[1], "r");
+    FILE *fp = fopen("../examples/temp.bas", "r");
+    //FILE *fp = fopen(argv[1], "r");
 #endif
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
