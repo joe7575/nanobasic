@@ -66,8 +66,8 @@ The Basic language is inspired by the original Microsoft Basic known from Home C
 in the 80s.
 
 This software also provides a Lua binding for using NanoBasic from Lua. The goal
-here is a Basic Computer as Luanti (Minetest) mods.
-See [nanobasic-mod](https://github.com/joe7575/nanobasic-mod)
+here is a Basic Computer as Luanti (Minetest) mod.
+See [nanobasic-mod](https://github.com/joe7575/nanobasic-mod).
 
 ### License
 
