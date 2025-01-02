@@ -77,6 +77,8 @@ The software is licensed under the MIT license.
 
 ### History
 
-**2025-01-01 V1.0.0**
+**2025-01-02 V1.0.0**
+- Fix string length bug
 
+**2025-01-01 V1.0.0**
 - First release

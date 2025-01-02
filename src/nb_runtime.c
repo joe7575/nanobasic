@@ -821,7 +821,7 @@ static uint16_t realloc_string(t_VM *vm) {
     uint8_t var  = vm->code[vm->pc + 1];
     uint16_t addr = DPOP();
     char *ptr = get_string(vm, addr);
-    uint16_t len = strlen(ptr);
+    uint16_t len = strlen(ptr) + 1;
 
     if(vm->variables[var] > 0x7FFF) { // heap buffer
         if(addr >= STRBUF1) { // no static string
