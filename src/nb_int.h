@@ -128,7 +128,7 @@ enum {
     INSTR, ON, TRON, TROFF,     // 180 - 183
     FREE, RND, PARAMS, STRINGS, // 184 - 187
     WHILE, LOOP, ENDIF, DATA,   // 188 - 191
-    READ, RESTORE,              // 192 - 193
+    READ, RESTORE, REF,         // 192 - 194
 };
 
 // Symbol table

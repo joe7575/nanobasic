@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
     uint16_t cycles;
     uint16_t errors;
     uint32_t timeout = 0;
-#if defined(cfg_STRING_SUPPORT) && !defined(cfg_BYTE_ACCESS)
+#if defined(cfg_STRING_SUPPORT) && !defined(cfg_DATA_ACCESS)
     uint32_t startval = time(NULL);
 #endif
 
@@ -71,8 +71,8 @@ int main(int argc, char* argv[]) {
     }
     nb_print("NanoBasic Compiler V1.0\n");
     nb_init();
-#if defined(cfg_BYTE_ACCESS) && !defined(cfg_STRING_SUPPORT)
-    assert(nb_define_external_function("send", 3, (uint8_t[]){NB_NUM, NB_NUM, NB_ARR}, NB_NONE) == NB_XFUNC + 0);
+#if defined(cfg_DATA_ACCESS) && !defined(cfg_STRING_SUPPORT)
+    assert(nb_define_external_function("send", 3, (uint8_t[]){NB_NUM, NB_NUM, NB_REF}, NB_NONE) == NB_XFUNC + 0);
 #elif defined(cfg_STRING_SUPPORT)
     assert(nb_define_external_function("setcur", 2, (uint8_t[]){NB_NUM, NB_NUM}, NB_NONE) == NB_XFUNC + 0);
     assert(nb_define_external_function("clrscr", 0, (uint8_t[]){}, NB_NONE) == NB_XFUNC + 1);
@@ -89,7 +89,7 @@ int main(int argc, char* argv[]) {
 
 #if defined(cfg_LINE_NUMBERS) && !defined(cfg_BASIC_V2)
     FILE *fp = fopen("../examples/lineno.bas", "r");
-#elif defined(cfg_BYTE_ACCESS) && !defined(cfg_STRING_SUPPORT) && !defined(cfg_LINE_NUMBERS) 
+#elif defined(cfg_DATA_ACCESS) && !defined(cfg_STRING_SUPPORT) && !defined(cfg_LINE_NUMBERS) 
     FILE *fp = fopen("../examples/byte_access.bas", "r");
 #elif !defined(cfg_LINE_NUMBERS) && !defined(cfg_BASIC_V2)
     FILE *fp = fopen("../examples/heron.bas", "r");
@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-#if defined(cfg_BYTE_ACCESS) && !defined(cfg_STRING_SUPPORT)
+#if defined(cfg_DATA_ACCESS) && !defined(cfg_STRING_SUPPORT)
     uint16_t start = nb_get_label_address(instance, "start");
 #endif
 #if defined(cfg_LINE_NUMBERS)
@@ -137,20 +137,20 @@ int main(int argc, char* argv[]) {
                 }
                 val = nb_get_arr_elem(instance, 3, 0);
                 printf("read arr %d(%d) = %d\n", 3, 0, val);
-#if defined(cfg_BYTE_ACCESS) && !defined(cfg_STRING_SUPPORT)
+#if defined(cfg_DATA_ACCESS) && !defined(cfg_STRING_SUPPORT)
             } else if(res == NB_XFUNC) {
                 // send
                 uint8_t arr[80];
-                uint16_t addr = nb_pop_arr_addr(instance);
-                nb_read_arr(instance, addr, arr, 80);
+                uint16_t ref = nb_pop_arr_ref(instance);
+                nb_read_arr(instance, ref, arr, 80);
                 uint32_t id = nb_pop_num(instance);
                 uint8_t port = nb_pop_num(instance);
-                nb_print("send on port %d: %u %02X %02X %02X %02X %08X\n", port, id, arr[0], arr[1], (uint8_t)arr[2], (uint8_t)arr[3], ACS32(arr[4]));
+                nb_print("send on port %d: %u %02X %02X %02X %02X %08X\n", port, id, arr[0], arr[1], arr[2], arr[3], ACS32(arr[4]));
                 if(start > 0) {
                     nb_set_pc(instance, start);
                     nb_push_num(instance, 1);
                     nb_push_num(instance, 2);
-                    nb_write_arr(instance, addr, "\x08\x07\x06\x05\x04\x03\x02\x01", 8);
+                    nb_write_arr(instance, ref, (uint8_t*)"\x08\x07\x06\x05\x04\x03\x02\x01", 8);
                 }    
 #elif defined(cfg_STRING_SUPPORT)
             } else if(res == NB_XFUNC) {

@@ -37,7 +37,7 @@ typedef enum type_t {
     e_NONE = NB_NONE,
     e_NUM = NB_NUM,
     e_STR = NB_STR,
-    e_ARR = NB_ARR,
+    e_REF = NB_REF,
     e_ANY = NB_ANY,
     e_CNST,
 } type_t;
@@ -111,7 +111,7 @@ static void compile_string(void);
 static void compile_end(void);
 static type_t compile_xfunc(uint8_t type);
 static void compile_break(void);
-#ifdef cfg_BYTE_ACCESS
+#ifdef cfg_DATA_ACCESS
 static void compile_set1(void);
 static void compile_set2(void);
 static void compile_set4(void);
@@ -182,7 +182,7 @@ void nb_init(void) {
     sym_add("data", 0, DATA);
     sym_add("read", 0, READ);
     sym_add("restore", 0, RESTORE);
-#ifdef cfg_BYTE_ACCESS
+#ifdef cfg_DATA_ACCESS
     sym_add("set1", 0, SET1);
     sym_add("set2", 0, SET2);
     sym_add("set4", 0, SET4);
@@ -190,6 +190,7 @@ void nb_init(void) {
     sym_add("get2", 0, GET2);
     sym_add("get4", 0, GET4);
     sym_add("copy", 0, COPY);
+    sym_add("ref", 0, REF);
 #endif
 #ifdef cfg_STRING_SUPPORT    
     sym_add("left$", 0, LEFTS);
@@ -559,7 +560,7 @@ static void compile_stmt(void) {
     case END: compile_end(); break;
     case XFUNC: compile_xfunc(e_NONE); break;
     case BREAK: compile_break(); break;
-#ifdef cfg_BYTE_ACCESS    
+#ifdef cfg_DATA_ACCESS    
     case SET1: compile_set1(); break;
     case SET2: compile_set2(); break;
     case SET4: compile_set4(); break;
@@ -1007,7 +1008,7 @@ static void compile_break(void) {
     pCi->pc += 2;
 }
 
-#ifdef cfg_BYTE_ACCESS
+#ifdef cfg_DATA_ACCESS
 static void compile_set1(void) {
     compile_set(k_SET_ARR_1BYTE_N2);
 }
@@ -1020,13 +1021,14 @@ static void compile_set4(void) {
     compile_set(k_SET_ARR_4BYTE_N2);
 }
 
+// copy(arr, offs, arr, offs, bytes)
 static void compile_copy(void) {
     match('(');
-    compile_expression(e_STR);
+    compile_expression(e_REF);
     match(',');
     compile_expression(e_NUM);
     match(',');
-    compile_expression(e_STR);
+    compile_expression(e_REF);
     match(',');
     compile_expression(e_NUM);
     match(',');
@@ -1502,24 +1504,18 @@ static type_t compile_factor(void) {
         pCi->p_code[pCi->pc++] = a_Symbol[pCi->sym_idx].value;
         type = e_NUM;
         break;
-    case ARR: 
+    case ARR: // like A(0)
         val = a_Symbol[pCi->sym_idx].value;
         match(ARR);
         tok = lookahead();
-        if(tok == '(') { // like A(0)
-            match('(');
-            compile_expression(e_NUM);
-            match(')');
-            pCi->p_code[pCi->pc++] = k_GET_ARR_ELEM_N2;
-            pCi->p_code[pCi->pc++] = val;
-            type = e_NUM;
-        } else { // left$(A,8) or copy(A, 0,...)
-            pCi->p_code[pCi->pc++] = k_PUSH_VAR_N2;
-            pCi->p_code[pCi->pc++] = a_Symbol[pCi->sym_idx].value;
-            type = e_ARR;
-        }
+        match('(');
+        compile_expression(e_NUM);
+        match(')');
+        pCi->p_code[pCi->pc++] = k_GET_ARR_ELEM_N2;
+        pCi->p_code[pCi->pc++] = val;
+        type = e_NUM;
         break;
-#ifdef cfg_BYTE_ACCESS        
+#ifdef cfg_DATA_ACCESS        
     case GET1: // get1 function
         compile_get(GET1, k_GET_ARR_1BYTE_N2);
         type = e_NUM;
@@ -1531,6 +1527,20 @@ static type_t compile_factor(void) {
     case GET4: // get4 function
         compile_get(GET4, k_GET_ARR_4BYTE_N2);
         type = e_NUM;
+        break;
+    case REF: // ref(arr/str) function
+        match(REF);
+        match('(');
+        tok = lookahead();
+        if(tok == ARR || tok == SID) {
+            match(tok);
+        } else {
+            error("syntax error", pCi->a_buff);
+        }
+        match(')');
+        pCi->p_code[pCi->pc++] = k_PUSH_VAR_N2;
+        pCi->p_code[pCi->pc++] = a_Symbol[pCi->sym_idx].value;
+        type = e_REF;
         break;
 #endif
     case STR: // string, like "Hello"
@@ -1672,7 +1682,7 @@ static type_t compile_factor(void) {
         match(NIL);
         pCi->p_code[pCi->pc++] = k_PUSH_NUM_N2;
         pCi->p_code[pCi->pc++] = 0;
-        type = e_ARR;
+        type = e_REF;
         break;
     default:
         error("syntax error", pCi->a_buff);

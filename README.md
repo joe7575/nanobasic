@@ -50,6 +50,12 @@ Basic V2 features (optional):
     string-variable$ = string-expression$                  ; without LET
 ```
 
+Data processing features (optional):
+
+```
+    GET1, GET2, GET4, SET1, SET2, SET4, COPY, REF
+```
+
 Supported data types are:
 
 - Signed Integer, 32 bit (-2,147,483,648 to 2,147,483,647)
@@ -76,6 +82,9 @@ Copyright (C) 2024-2025 Joachim Stolberg
 The software is licensed under the MIT license.
 
 ### History
+
+**2025-01-11 V1.0.1**
+- Rework data access API and functions
 
 **2025-01-02 V1.0.0**
 - Fix string length bug

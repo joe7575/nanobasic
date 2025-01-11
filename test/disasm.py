@@ -25,7 +25,8 @@ for line in open("../src/nb_int.h").readlines():
         else:
             continue
         Opcodes.append((opcode, int(bytes)))
-        #print(opcode, bytes)
+
+print("Number of Opcodes: %d" % len(Opcodes))
 
 first_line = True        
 code = ""

@@ -142,7 +142,8 @@ void nb_push_str(void *pv_vm, char *str) {
     }
 }
 
-uint16_t nb_pop_arr_addr(void *pv_vm) {
+#ifdef cfg_DATA_ACCESS
+uint16_t nb_pop_arr_ref(void *pv_vm) {
     t_VM *vm = pv_vm;
     if(vm->psp == 0) {
         return 0;
@@ -179,6 +180,7 @@ uint16_t nb_write_arr(void *pv_vm, uint16_t addr, uint8_t *arr, uint16_t bytes) 
     memcpy(&vm->heap[addr & 0x7FFF], arr, size);
     return size;
 }
+#endif
 
 uint8_t nb_stack_depth(void *pv_vm) {
     t_VM *vm = pv_vm;
@@ -199,12 +201,14 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
     uint16_t idx;
     uint16_t addr, size;
     uint16_t offs1;
-#ifdef cfg_BYTE_ACCESS
+#ifdef cfg_DATA_ACCESS
     uint16_t offs2, size1, size2;
 #endif
     uint8_t  var, val;
 #ifdef cfg_STRING_SUPPORT
-    char     *ptr, *str1, *str2;
+    char *ptr, *str1, *str2;
+#elif defined(cfg_BASIC_V2)
+    char *ptr;
 #endif
     t_VM *vm = pv_vm;
 
@@ -506,7 +510,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             DPUSH(ACS32(vm->heap[addr + tmp1]));
             vm->pc += 2;
             break;
-#ifdef cfg_BYTE_ACCESS            
+#ifdef cfg_DATA_ACCESS            
         case k_SET_ARR_1BYTE_N2:
             var = vm->code[vm->pc + 1];
             addr = vm->variables[var] & 0x7FFF;
