@@ -68,6 +68,7 @@ enum {
     k_GOTO_N3,            // (16 bit programm address)
     k_GOSUB_N3,           // (16 bit programm address)
     k_RETURN_N1,          // (pop return address)
+    k_RETI_N1,            // (return from interrupt)
     k_FOR_N1,             // (check stack overflow)
     k_NEXT_N4,            // (16 bit programm address), (variable)
     k_IF_N3,              // (pop val, END address)
@@ -128,7 +129,7 @@ enum {
     INSTR, ON, TRON, TROFF,     // 180 - 183
     FREE, RND, PARAMS, STRINGS, // 184 - 187
     WHILE, LOOP, ENDIF, DATA,   // 188 - 191
-    READ, RESTORE, REF,         // 192 - 194
+    READ, RESTORE, REF, RETI,   // 192 - 195
 };
 
 // Symbol table

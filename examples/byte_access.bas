@@ -28,4 +28,4 @@ start:
   id = param()
   port = param()
   print "start", port, id, get1(Pld, 0), get1(Pld, 1), get1(Pld, 2), get1(Pld, 3), get4(Pld, 4)
-  return
+  reti

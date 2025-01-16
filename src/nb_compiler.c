@@ -118,6 +118,7 @@ static void compile_set4(void);
 static void compile_copy(void);
 static void compile_set(uint8_t instr);
 static void compile_get(uint8_t tok, uint8_t instr);
+static void compile_reti(void);
 #endif
 static void compile_erase(void);
 static void compile_on(void);
@@ -191,6 +192,9 @@ void nb_init(void) {
     sym_add("get4", 0, GET4);
     sym_add("copy", 0, COPY);
     sym_add("ref", 0, REF);
+    sym_add("param$", 0, PARAMS);
+    sym_add("param", 0, PARAM);
+    sym_add("reti", 0, RETI);
 #endif
 #ifdef cfg_STRING_SUPPORT    
     sym_add("left$", 0, LEFTS);
@@ -206,8 +210,6 @@ void nb_init(void) {
 #if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)
     sym_add("string$", 0, STRINGS);
 #endif
-    sym_add("param$", 0, PARAMS);
-    sym_add("param", 0, PARAM);
     sym_add("const", 0, CONST);
     sym_add("erase", 0, ERASE);
     sym_add("instr", 0, INSTR);
@@ -407,11 +409,11 @@ static uint8_t next_token(void) {
     if(pCi->a_buff[0] == '\"') {
         return STR;
     }
-    if(isdigit(pCi->a_buff[0])) {
+    if(isdigit((int8_t)pCi->a_buff[0])) {
         pCi->value = atoi(pCi->a_buff);
        return NUM;
     }
-    if(isalpha(pCi->a_buff[0]) || pCi->a_buff[0] == '_') {
+    if(isalpha((int8_t)pCi->a_buff[0]) || pCi->a_buff[0] == '_') {
         uint16_t len = strlen(pCi->a_buff);
         uint8_t type = pCi->a_buff[len - 1] == '$' ? SID : ID;
 
@@ -565,6 +567,7 @@ static void compile_stmt(void) {
     case SET2: compile_set2(); break;
     case SET4: compile_set4(); break;
     case COPY: compile_copy(); break;
+    case RETI: compile_reti(); break;
 #endif
     case ERASE: compile_erase(); break;
     case ON: compile_on(); break;
@@ -667,7 +670,7 @@ static void compile_while(void) {
 ** ENDIF
 */
 static void compile_if_V2(uint16_t pos1) {
-    uint8_t tok;
+    uint8_t tok = 0;
     uint16_t pos2; // endif
 
     while(get_line()) {
@@ -1063,6 +1066,10 @@ static void compile_get(uint8_t tok, uint8_t instr) {
     pCi->p_code[pCi->pc++] = instr;
     pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
 }
+
+static void compile_reti(void) {
+    pCi->p_code[pCi->pc++] = k_RETI_N1;
+}   
 #endif
 
 #ifdef cfg_BASIC_V2
@@ -1542,6 +1549,20 @@ static type_t compile_factor(void) {
         pCi->p_code[pCi->pc++] = a_Symbol[pCi->sym_idx].value;
         type = e_REF;
         break;
+    case PARAMS: // Move value from (external) parameter stack to the data stack
+        match(PARAMS);
+        match('(');
+        match(')');
+        pCi->p_code[pCi->pc++] = k_PARAMS_N1;
+        type = e_STR;
+        break;
+    case PARAM: // Move value from (external) parameter stack to the data stack
+        match(PARAM);
+        match('(');
+        match(')');
+        pCi->p_code[pCi->pc++] = k_PARAM_N1;
+        type = e_NUM;
+        break;
 #endif
     case STR: // string, like "Hello"
         match(STR);
@@ -1651,20 +1672,6 @@ static type_t compile_factor(void) {
         type = e_STR;
         break;
 #endif        
-    case PARAMS: // Move value from (external) parameter stack to the data stack
-        match(PARAMS);
-        match('(');
-        match(')');
-        pCi->p_code[pCi->pc++] = k_PARAMS_N1;
-        type = e_STR;
-        break;
-    case PARAM: // Move value from (external) parameter stack to the data stack
-        match(PARAM);
-        match('(');
-        match(')');
-        pCi->p_code[pCi->pc++] = k_PARAM_N1;
-        type = e_NUM;
-        break;
     case RND: // Random number
         match(RND);
         match('(');

@@ -399,6 +399,9 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
         case k_RETURN_N1:
             vm->pc = (uint16_t)CPOP();
             break;
+        case k_RETI_N1:
+            vm->pc = (uint16_t)CPOP();
+            return NB_RETI;
         case k_FOR_N1:
             if(++vm->nested_loop_idx > cfg_MAX_FOR_LOOPS) {
                 nb_print("Error: too many nested 'for' loops");

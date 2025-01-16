@@ -42,6 +42,7 @@ enum {
   NB_ERROR,    // error in programm
   NB_BREAK,    // break command
   NB_BUSY,     // programm still running
+  NB_RETI,     // return from interrupt
   NB_XFUNC,    // 'call' external function
 };
 

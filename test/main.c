@@ -64,7 +64,9 @@ int main(int argc, char* argv[]) {
 #if defined(cfg_STRING_SUPPORT) && !defined(cfg_DATA_ACCESS)
     uint32_t startval = time(NULL);
 #endif
-
+#if defined(cfg_DATA_ACCESS) && !defined(cfg_STRING_SUPPORT)
+    bool interrupted = false;
+#endif
     if (argc != 2) {
         nb_print("Usage: %s <programm>\n", argv[0]);
         return 1;
@@ -94,8 +96,8 @@ int main(int argc, char* argv[]) {
 #elif !defined(cfg_LINE_NUMBERS) && !defined(cfg_BASIC_V2)
     FILE *fp = fopen("../examples/heron.bas", "r");
 #else
-    FILE *fp = fopen("../examples/temp.bas", "r");
-    //FILE *fp = fopen(argv[1], "r");
+    //FILE *fp = fopen("../examples/temp.bas", "r");
+    FILE *fp = fopen(argv[1], "r");
 #endif
     if(fp == NULL) {
         nb_print("Error: could not open file\n");
@@ -138,6 +140,8 @@ int main(int argc, char* argv[]) {
                 val = nb_get_arr_elem(instance, 3, 0);
                 printf("read arr %d(%d) = %d\n", 3, 0, val);
 #if defined(cfg_DATA_ACCESS) && !defined(cfg_STRING_SUPPORT)
+            } else if(res == NB_RETI) {
+                interrupted = false;
             } else if(res == NB_XFUNC) {
                 // send
                 uint8_t arr[80];
@@ -146,11 +150,12 @@ int main(int argc, char* argv[]) {
                 uint32_t id = nb_pop_num(instance);
                 uint8_t port = nb_pop_num(instance);
                 nb_print("send on port %d: %u %02X %02X %02X %02X %08X\n", port, id, arr[0], arr[1], arr[2], arr[3], ACS32(arr[4]));
-                if(start > 0) {
+                if(start > 0 && !interrupted) {
                     nb_set_pc(instance, start);
                     nb_push_num(instance, 1);
                     nb_push_num(instance, 2);
                     nb_write_arr(instance, ref, (uint8_t*)"\x08\x07\x06\x05\x04\x03\x02\x01", 8);
+                    interrupted = true;
                 }    
 #elif defined(cfg_STRING_SUPPORT)
             } else if(res == NB_XFUNC) {
