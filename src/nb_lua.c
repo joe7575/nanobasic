@@ -147,8 +147,6 @@ void nb_print(const char * format, ...)
         va_start(args, format);
         vsnprintf(buffer, sizeof(buffer), format, args);
         va_end(args);
-        //printf(":%lu: '%s'\n", (uint64_t)p_Cpu->screen_buffer, buffer);
-        //printf("screen_buffer1=>>%s<<", p_Cpu->screen_buffer);
         buffer[MAX_LINE_LEN] = '\0';
         for(int i = 0; i < strlen(buffer); i++) {
             if (buffer[i] >= ' ' && buffer[i] <= '~') {
@@ -167,7 +165,6 @@ void nb_print(const char * format, ...)
                 memset(p_Cpu->screen_buffer + p_Cpu->ypos * MAX_LINE_LEN + pos, ' ', p_Cpu->xpos - pos);
             }
         }
-        //printf("screen_buffer2=>>%s<<", p_Cpu->screen_buffer);
     }
 }
 
