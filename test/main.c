@@ -84,16 +84,15 @@ int main(int argc, char* argv[]) {
     assert(nb_define_external_function("input", 1, (uint8_t[]){NB_STR}, NB_NUM) == NB_XFUNC + 5);
     assert(nb_define_external_function("input$", 1, (uint8_t[]){NB_STR}, NB_STR) == NB_XFUNC + 6);
     assert(nb_define_external_function("cmd", 3, (uint8_t[]){NB_NUM, NB_ANY, NB_ANY}, NB_NUM) == NB_XFUNC + 7);
-    assert(nb_define_external_function("sval$", 1, (uint8_t[]){NB_NUM}, NB_STR) == NB_XFUNC + 8);
 #endif
 
     void *instance = nb_create();
 
-#if defined(cfg_LINE_NUMBERS) && !defined(cfg_BASIC_V2)
+#ifdef cfg_LINE_NUMBERS
     FILE *fp = fopen("../examples/lineno.bas", "r");
-#elif defined(cfg_DATA_ACCESS) && !defined(cfg_STRING_SUPPORT) && !defined(cfg_LINE_NUMBERS) 
+#elif defined(cfg_DATA_ACCESS)
     FILE *fp = fopen("../examples/byte_access.bas", "r");
-#elif !defined(cfg_LINE_NUMBERS) && !defined(cfg_BASIC_V2)
+#elif !defined(cfg_STRING_SUPPORT)
     FILE *fp = fopen("../examples/heron.bas", "r");
 #else
     //FILE *fp = fopen("../examples/temp.bas", "r");
@@ -133,10 +132,12 @@ int main(int argc, char* argv[]) {
                 nb_print("Break in line %u\n", lineno);
                 uint32_t val = nb_get_number(instance, 0);
                 printf("read num %d = %d\n", 0, val);
+#ifdef cfg_STRING_SUPPORT                
                 char *ptr = nb_get_string(instance, 1);
                 if(ptr != NULL) {
                     printf("read str %d = %s\n", 1, ptr);
                 }
+#endif
                 val = nb_get_arr_elem(instance, 3, 0);
                 printf("read arr %d(%d) = %d\n", 3, 0, val);
 #if defined(cfg_DATA_ACCESS) && !defined(cfg_STRING_SUPPORT)
@@ -202,10 +203,15 @@ int main(int argc, char* argv[]) {
                 if(depth == 3) {
                     uint32_t val1 = nb_peek_num(instance, 3);
                     if(val1 >= 128) {
+#ifdef cfg_STRING_SUPPORT                        
                         char buff[80];
                         char *str3 = nb_pop_str(instance, buff, 80);
                         uint32_t val2 = nb_pop_num(instance);
                         nb_print("cmd on port %u, %d, %s\n", val1, val2, str3);
+#else
+                        uint32_t val2 = nb_pop_num(instance);
+                        nb_print("cmd on port %u, %d\n", val1, val2);
+#endif
                     } else {
                         uint32_t val3 = nb_pop_num(instance);
                         uint32_t val2 = nb_pop_num(instance);
@@ -224,12 +230,6 @@ int main(int argc, char* argv[]) {
                     nb_print("Error: wrong number of parameters\n");
                     nb_push_num(instance, -3);
                 }
-            } else if(res == NB_XFUNC + 8) {
-                // sval$
-                char buff[80];
-                uint32_t val = nb_pop_num(instance);
-                sprintf(buff, "%d", (int32_t)val);
-                nb_push_str(instance, buff);
             } else if(res >= NB_XFUNC) {
                 nb_print("Unknown external function\n");
             }

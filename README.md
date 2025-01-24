@@ -29,23 +29,18 @@ Most of the common BASIC keywords are supported:
     FREE
     AND, NOT, OR, RND, MOD, LEN, VAL, SPC, NIL
     LEN, CHR$, MID$, LEFT$, RIGHT$, STR$, HEX$, STRING$
-```
 
-Basic V2 features (optional):
+    ; Basic V2 features:
 
-```bnf
     CONST variable = number
-
-    IF relation-expression THEN 
+    IF relation-expression THEN
         statements...
     [ ELSE
         statements... ]
     ENDIF
-
     WHILE relation-expression
         statements...
     LOOP
-
     variable = expression                                  ; without LET
     string-variable$ = string-expression$                  ; without LET
 ```
@@ -53,7 +48,7 @@ Basic V2 features (optional):
 Data processing features (optional):
 
 ```
-    GET1, GET2, GET4, SET1, SET2, SET4, COPY, REF
+    GET1, GET2, GET4, SET1, SET2, SET4, COPY, REF, RETI
 ```
 
 Supported data types are:
@@ -82,6 +77,10 @@ Copyright (C) 2024-2025 Joachim Stolberg
 The software is licensed under the MIT license.
 
 ### History
+
+**2025-01-24 V1.0.2**
+- Add RETI command
+- Remove cfg_BASIC_V2 compiler switch
 
 **2025-01-11 V1.0.1**
 - Rework data access API and functions

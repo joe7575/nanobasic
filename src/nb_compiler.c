@@ -86,9 +86,7 @@ static comp_inst_t *pCi = NULL;
 static bool get_line(void);
 static uint8_t next_token(void);
 static uint8_t lookahead(void);
-#ifdef cfg_BASIC_V2
 static bool end_of_line(void);
-#endif
 static uint8_t next(void);
 static void match(uint8_t expected);
 #ifndef cfg_LINE_NUMBERS
@@ -126,10 +124,8 @@ static uint8_t list_of_numbers(void);
 static void compile_data(void);
 static void compile_read(void);
 static void compile_restore(void);
-#ifdef cfg_BASIC_V2
 static void compile_const(void);
 static void compile_while(void);
-#endif
 static void compile_tron(void);
 static void compile_troff(void);
 static void compile_free(void);
@@ -137,6 +133,7 @@ static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
 static uint16_t sym_get(char *id);
 static void error(char *err, char *id);
 static uint8_t get_num_vars(void);
+static void add_default_params(uint8_t num);
 static void forward_declaration(uint16_t idx, uint16_t pos);
 static void resolve_forward_declarations(void);
 static void append_data_to_code(t_VM *vm);
@@ -163,12 +160,10 @@ void nb_init(void) {
     sym_add("if", 0, IF);
     sym_add("then", 0, THEN);
     sym_add("else", 0, ELSE);
-#ifdef cfg_BASIC_V2    
     sym_add("end", 0, END);
     sym_add("while", 0, WHILE);
     sym_add("loop", 0, LOOP);
     sym_add("endif", 0, ENDIF);
-#endif
     sym_add("print", 0, PRINT);
     sym_add("goto", 0, GOTO);
     sym_add("gosub", 0, GOSUB);
@@ -206,8 +201,6 @@ void nb_init(void) {
     sym_add("spc", 0, SPC);
     sym_add("hex$", 0, HEXS);
     sym_add("nil", 0, NIL);
-#endif
-#if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)
     sym_add("string$", 0, STRINGS);
 #endif
     sym_add("const", 0, CONST);
@@ -461,11 +454,9 @@ static uint8_t lookfurther(void) {
 }
 #endif
 
-#ifdef cfg_BASIC_V2
 static bool end_of_line(void) {
     return lookahead() == 0;
 }
-#endif
 
 static uint8_t next(void) {
     if(pCi->p_pos == pCi->p_next) {
@@ -555,10 +546,8 @@ static void compile_stmt(void) {
     case READ: compile_read(); break;
     case DATA: compile_data(); break;
     case RESTORE: compile_restore(); break;
-#ifdef cfg_BASIC_V2
     case CONST: compile_const(); break;
     case WHILE: compile_while(); break;
-#endif
     case END: compile_end(); break;
     case XFUNC: compile_xfunc(e_NONE); break;
     case BREAK: compile_break(); break;
@@ -633,7 +622,6 @@ static void compile_for(void) {
     pCi->p_code[pCi->pc++] = a_Symbol[idx].value;
 }
 
-#ifdef cfg_BASIC_V2
 /*
 ** WHILE <Expression>
 **    <Statement>...
@@ -701,7 +689,7 @@ static void compile_if_V2(uint16_t pos1) {
     }
     match(ENDIF);
 }
-#endif
+
 static void compile_if(void) {
     uint8_t tok;
 
@@ -712,12 +700,10 @@ static void compile_if(void) {
     tok = lookahead();
     if(tok == THEN) {
         match(THEN);
-#ifdef cfg_BASIC_V2
         if(end_of_line()) {
             compile_if_V2(pos);
             return;
         }
-#endif
         compile_stmts();
         ACS16(pCi->p_code[pos]) = pCi->pc;
     } else if(tok == GOTO) {
@@ -994,6 +980,7 @@ static type_t compile_xfunc(uint8_t type) {
         if(tok == ',') {
             match(',');
         } else if(tok == ')') {
+            add_default_params(a_XFuncs[idx].num_params - i - 1);
             break;
         } else {
             error("syntax error", pCi->a_buff);
@@ -1072,7 +1059,6 @@ static void compile_reti(void) {
 }   
 #endif
 
-#ifdef cfg_BASIC_V2
 static void compile_const(void) {
     uint32_t factor = 1;
     next();
@@ -1087,7 +1073,6 @@ static void compile_const(void) {
     a_Symbol[idx].type = e_CNST;
     a_Symbol[idx].value = pCi->value * factor;
 }
-#endif
 
 static void compile_erase(void) {
     uint8_t tok = next();
@@ -1251,6 +1236,14 @@ static uint8_t get_num_vars(void) {
         }
     }
     return idx;
+}
+
+static void add_default_params(uint8_t num) {
+    for(uint8_t i = 0; i < num; i++) {
+        pCi->p_code[pCi->pc++] = k_PUSH_NUM_N2;
+        pCi->p_code[pCi->pc++] = 0;
+        pCi->p_code[pCi->pc++] = k_PUSH_PARAM_N1;
+    }
 }
 
 // idx = index of symbol (SmyIdx)
@@ -1549,6 +1542,7 @@ static type_t compile_factor(void) {
         pCi->p_code[pCi->pc++] = a_Symbol[pCi->sym_idx].value;
         type = e_REF;
         break;
+#endif
     case PARAMS: // Move value from (external) parameter stack to the data stack
         match(PARAMS);
         match('(');
@@ -1563,7 +1557,6 @@ static type_t compile_factor(void) {
         pCi->p_code[pCi->pc++] = k_PARAM_N1;
         type = e_NUM;
         break;
-#endif
     case STR: // string, like "Hello"
         match(STR);
         // push string address
@@ -1658,8 +1651,6 @@ static type_t compile_factor(void) {
         pCi->p_code[pCi->pc++] = k_INSTR_N1;
         type = e_NUM;
         break;
-#endif
-#if defined(cfg_BASIC_V2) || defined(cfg_STRING_SUPPORT)        
     case STRINGS: // string$ function
         match(STRINGS);
         match('(');

@@ -31,8 +31,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define NB_NONE     (0)
 #define NB_NUM      (1)
 #define NB_STR      (2)
-#define NB_REF      (3)
+#define NB_ARR      (3)
 #define NB_ANY      (4)
+#define NB_REF      (5)
 
 /*
 ** Return values of 'nb_run()'
@@ -89,11 +90,9 @@ void nb_push_str(void *pv_vm, char *str);
 // @param idx = stack position (1..n) 1 = top of stack
 int32_t nb_peek_num(void *pv_vm, uint8_t idx);
 
-#ifdef cfg_DATA_ACCESS
 /*
 ** Array/String access functions
 */
 uint16_t nb_pop_arr_ref(void *pv_vm);
 uint16_t nb_read_arr(void *pv_vm, uint16_t ref, uint8_t *arr, uint16_t bytes);
 uint16_t nb_write_arr(void *pv_vm, uint16_t ref, uint8_t *arr, uint16_t bytes);
-#endif

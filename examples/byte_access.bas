@@ -7,6 +7,7 @@ set1(Pld, 1, 1)
 set1(Pld, 2, 255)
 set1(Pld, 3, 250)
 set4(Pld, 4, 4294967295)
+print "Pld", Pld(0), Pld(1), Pld(2)
 
 send(1, 1014, ref(Pld))
 Arr(0) = 0

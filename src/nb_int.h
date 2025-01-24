@@ -144,23 +144,23 @@ typedef struct {
 typedef struct {
     uint16_t code_size; // size of the compiled byte code
     uint16_t num_vars;  // number of used variables
-    uint16_t pc;   // Programm counter
-    uint8_t  dsp;  // Data stack pointer
-    uint8_t  csp;  // Call stack pointer
-    uint8_t  psp;  // Parameter stack pointer
+    uint16_t pc;        // Programm counter
+    uint16_t sp;        // Stack pointer
+    uint8_t  psp;       // Parameter stack pointer
     uint8_t  nested_loop_idx;
-    int32_t  datastack[cfg_DATASTACK_SIZE];
-    uint16_t callstack[cfg_STACK_SIZE];
-    int32_t  paramstack[cfg_STACK_SIZE];
+    int32_t  stack[cfg_STACK_SIZE];
+    int32_t  paramstack[cfg_PARAMSTACK_SIZE];
     uint32_t variables[cfg_NUM_VARS];
     uint8_t  code[cfg_MAX_CODE_SIZE];
     uint16_t mem_start_addr;    // Search start address for a free memory block
     uint16_t data_start_addr;   // Data section start address
     uint16_t data_read_offs;    // Data section read offset
     uint8_t  heap[cfg_MEM_HEAP_SIZE];
+#ifdef cfg_STRING_SUPPORT    
     char     strbuf1[k_MAX_LINE_LEN]; // temporary buffer for string operations
     char     strbuf2[k_MAX_LINE_LEN]; // temporary buffer for string operations
     bool     strbuf1_used;            // flag to indicate which buffer is used
+#endif
 } t_VM;
 
 char *nb_scanner(char *p_in, char *p_out);

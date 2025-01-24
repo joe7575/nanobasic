@@ -508,8 +508,8 @@ static int pop_str(lua_State *L) {
 static int pop_arr_addr(lua_State *L) {
     nb_cpu_t *C = check_vm(L);
     if(C != NULL) {
-        uint16_t addr = nb_pop_arr_addr(C->pv_vm);
-        lua_pushinteger(L, addr);
+        uint16_t ref = nb_pop_arr_ref(C->pv_vm);
+        lua_pushinteger(L, ref);
         return 1;
     }
     return 0;
