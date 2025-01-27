@@ -81,6 +81,7 @@ The software is licensed under the MIT license.
 **2025-01-24 V1.0.2**
 - Add RETI command
 - Remove cfg_BASIC_V2 compiler switch
+- Remove callstack
 
 **2025-01-11 V1.0.1**
 - Rework data access API and functions

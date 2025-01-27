@@ -34,13 +34,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define HEADER_SIZE         2
 
 void nb_mem_init(t_VM *p_vm) {
+#ifdef cfg_STRING_SUPPORT
     for(int i = 0; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
         p_vm->heap[i] = k_MEM_FREE_TAG;
     }
+#endif
     p_vm->mem_start_addr = 0;
 }
 
 uint16_t nb_mem_alloc(t_VM *p_vm, uint16_t bytes) {
+#ifdef cfg_STRING_SUPPORT
     if(bytes <= cfg_MAX_MEM_BLOCK_SIZE) {
         uint16_t num_blocks = NUM_BLOCKS(bytes);
         uint16_t num_words  = NUM_WORDS(bytes);
@@ -73,9 +76,20 @@ uint16_t nb_mem_alloc(t_VM *p_vm, uint16_t bytes) {
             }
         }
     }
+#else
+    uint16_t num_words  = NUM_WORDS(bytes);
+    bytes += HEADER_SIZE; 
+    if((p_vm->mem_start_addr + bytes) < cfg_MEM_HEAP_SIZE) {
+        uint16_t addr = p_vm->mem_start_addr;
+        p_vm->mem_start_addr += bytes;
+        p_vm->heap[addr + 1] = num_words;
+        return 0x8000 + addr + HEADER_SIZE;
+    }
+#endif    
     return 0;
 }
 
+#ifdef cfg_STRING_SUPPORT
 void nb_mem_free(t_VM *p_vm, uint16_t addr) {
     if(addr > 0x7FFF) {
         addr = (addr & 0x7FFF) - HEADER_SIZE;
@@ -103,6 +117,7 @@ uint16_t nb_mem_realloc(t_VM *p_vm, uint16_t addr, uint16_t bytes) {
     }
     return 0;
 }
+#endif
 
 // size in bytes
 uint16_t nb_mem_get_blocksize(t_VM *p_vm, uint16_t addr) {
@@ -111,6 +126,7 @@ uint16_t nb_mem_get_blocksize(t_VM *p_vm, uint16_t addr) {
 }
 
 uint16_t nb_mem_get_free(t_VM *p_vm) {
+#ifdef cfg_STRING_SUPPORT
     uint16_t free = 0;
     for(int i = p_vm->mem_start_addr; i < cfg_MEM_HEAP_SIZE; i += k_MEM_BLOCK_SIZE) {
         if(p_vm->heap[i] == k_MEM_FREE_TAG) {
@@ -120,6 +136,9 @@ uint16_t nb_mem_get_free(t_VM *p_vm) {
         }
     }
     return free;
+#else
+    return cfg_MEM_HEAP_SIZE - p_vm->mem_start_addr;
+#endif
 }
 
 #ifdef TEST
