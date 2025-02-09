@@ -178,6 +178,8 @@ void nb_init(void) {
     sym_add("data", 0, DATA);
     sym_add("read", 0, READ);
     sym_add("restore", 0, RESTORE);
+    sym_add("param$", 0, PARAMS);
+    sym_add("param", 0, PARAM);
 #ifdef cfg_DATA_ACCESS
     sym_add("set1", 0, SET1);
     sym_add("set2", 0, SET2);
@@ -187,8 +189,6 @@ void nb_init(void) {
     sym_add("get4", 0, GET4);
     sym_add("copy", 0, COPY);
     sym_add("ref", 0, REF);
-    sym_add("param$", 0, PARAMS);
-    sym_add("param", 0, PARAM);
     sym_add("reti", 0, RETI);
 #endif
 #ifdef cfg_STRING_SUPPORT    
