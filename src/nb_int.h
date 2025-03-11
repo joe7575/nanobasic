@@ -130,6 +130,7 @@ enum {
     FREE, RND, PARAMS, STRINGS, // 184 - 187
     WHILE, LOOP, ENDIF, DATA,   // 188 - 191
     READ, RESTORE, REF, RETI,   // 192 - 195
+    ELSEIF,                     // 196 - 198
 };
 
 // Symbol table

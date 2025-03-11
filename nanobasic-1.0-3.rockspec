@@ -1,5 +1,5 @@
 package = "nanobasic"
-version = "1.0-2"
+version = "1.0-3"
 source = {
     url = "git+https://github.com/joe7575/nanobasic.git"
 }

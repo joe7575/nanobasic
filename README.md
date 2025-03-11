@@ -35,6 +35,8 @@ Most of the common BASIC keywords are supported:
     CONST variable = number
     IF relation-expression THEN
         statements...
+    [ ELSEIF relation-expression THEN
+        statements... ]
     [ ELSE
         statements... ]
     ENDIF
@@ -77,6 +79,9 @@ Copyright (C) 2024-2025 Joachim Stolberg
 The software is licensed under the MIT license.
 
 ### History
+
+**2025-03-11 V1.0.3**
+- Add ELSEIF statement
 
 **2025-01-24 V1.0.2**
 - Add RETI command

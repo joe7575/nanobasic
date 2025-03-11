@@ -160,6 +160,7 @@ void nb_init(void) {
     sym_add("if", 0, IF);
     sym_add("then", 0, THEN);
     sym_add("else", 0, ELSE);
+    sym_add("elseif", 0, ELSEIF);
     sym_add("end", 0, END);
     sym_add("while", 0, WHILE);
     sym_add("loop", 0, LOOP);
@@ -367,6 +368,11 @@ static bool get_line(void) {
             error("line too long", NULL);
         }
         pCi->p_pos = pCi->p_next = pCi->a_line;
+        pCi->next_tok = next_token();
+        while(pCi->next_tok == ':') {
+            pCi->p_pos = pCi->p_next;
+            pCi->next_tok = next_token();
+        }
 
 #ifndef cfg_LINE_NUMBERS        
         pCi->linenum++;
@@ -443,10 +449,6 @@ static uint8_t next_token(void) {
 static uint8_t lookahead(void) {
     if(pCi->p_pos == pCi->p_next) {
         pCi->next_tok = next_token();
-        while(pCi->next_tok == ':') {
-            pCi->p_pos = pCi->p_next;
-            pCi->next_tok = next_token();
-        }
     }
     //nb_print("lookahead: %s\n", pCi->a_buff);
     return pCi->next_tok;
@@ -653,6 +655,8 @@ static void compile_while(void) {
 /*
 ** IF <Expression> THEN
 **    <Statement>...
+** [ELSEIF <Expression> THEN
+**    <Statement>...]
 ** [ELSE
 **    <Statement>...]
 ** ENDIF
@@ -663,13 +667,21 @@ static void compile_if_V2(uint16_t pos1) {
 
     while(get_line()) {
         tok = lookahead();
-        if(tok == ELSE || tok == ENDIF) {
+        if(tok == ELSE || tok == ENDIF || tok == ELSEIF) {
             break;
         }
         compile_line();
     }
 
-    if(tok == ELSE) {
+    if(tok == ELSEIF) {
+        match(tok);
+        pCi->p_code[pCi->pc++] = k_GOTO_N3;
+        pos2 = pCi->pc; // end of else
+        pCi->pc += 2;
+        ACS16(pCi->p_code[pos1]) = pCi->pc;
+        compile_if();
+        return;
+    } else if(tok == ELSE) {
         pCi->p_code[pCi->pc++] = k_GOTO_N3;
         pos2 = pCi->pc; // end of else
         pCi->pc += 2;
