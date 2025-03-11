@@ -154,8 +154,11 @@ uint16_t nb_pop_arr_ref(void *pv_vm) {
 uint16_t nb_read_arr(void *pv_vm, uint16_t addr, uint8_t *arr, uint16_t bytes) {
     t_VM *vm = pv_vm;
     if(addr < 0x8000) {
-        memset(arr, 0, bytes);
-        return 0;
+    	// Const string reference (code segment)
+        addr = MIN(addr, vm->code_size);
+        uint16_t size = MIN(strlen((char*)&vm->code[addr]) + 1, bytes);
+        memcpy(arr, &vm->code[addr ], size);
+        return size;
     }
     uint16_t size = nb_mem_get_blocksize(vm, addr);
     if(size == 0) {

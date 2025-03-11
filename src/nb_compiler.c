@@ -442,7 +442,11 @@ static uint8_t next_token(void) {
 
 static uint8_t lookahead(void) {
     if(pCi->p_pos == pCi->p_next) {
-       pCi->next_tok = next_token();
+        pCi->next_tok = next_token();
+        while(pCi->next_tok == ':') {
+            pCi->p_pos = pCi->p_next;
+            pCi->next_tok = next_token();
+        }
     }
     //nb_print("lookahead: %s\n", pCi->a_buff);
     return pCi->next_tok;
@@ -514,10 +518,6 @@ static void compile_stmts(void) {
     while(tok && tok != ELSE) {
         compile_stmt();
         tok = lookahead();
-        if(tok == ':') {
-            match(':');
-            tok = lookahead();
-        }
         if(pCi->pc >= cfg_MAX_CODE_SIZE - MAX_CODE_PER_LINE) {
             error("code size exceeded", NULL);
             break;
