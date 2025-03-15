@@ -31,6 +31,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define MAX_XFUNC_PARAMS    8
 #define MAX_CODE_PER_LINE   50 // aprox. max. 50 bytes per line
+#define BLOCKEND(tok)       (tok == ELSE || tok == ELSEIF || tok == NEXT || tok == ENDIF || tok == LOOP) 
 
 // Expression result types
 typedef enum type_t {
@@ -92,6 +93,7 @@ static void match(uint8_t expected);
 #ifndef cfg_LINE_NUMBERS
 static void label(void);
 #endif
+static void compile_block(void);
 static void compile_line(void);
 static void compile_stmts(void);
 static void compile_stmt(void);
@@ -497,6 +499,19 @@ static void label(void) {
 }
 #endif
 
+static void compile_block(void) {
+    compile_stmts();
+    if(BLOCKEND(lookahead())) {
+        return;
+    }
+    while(get_line()) {
+        if(BLOCKEND(lookahead())) {
+            return;
+        }
+        compile_line();
+    }
+}
+
 static void compile_line(void) {
 #ifndef cfg_LINE_NUMBERS    
     uint8_t tok = lookahead();
@@ -517,7 +532,7 @@ static void compile_line(void) {
 
 static void compile_stmts(void) {
     uint8_t tok = lookahead();
-    while(tok && tok != ELSE) {
+    while(tok && !BLOCKEND(tok)) {
         compile_stmt();
         tok = lookahead();
         if(pCi->pc >= cfg_MAX_CODE_SIZE - MAX_CODE_PER_LINE) {
@@ -601,13 +616,7 @@ static void compile_for(void) {
     }
 
     pc = pCi->pc;
-    while(get_line()) {
-        tok = lookahead();
-        if(tok == NEXT) {
-            break;
-        }
-        compile_line();
-    }
+    compile_block();
 
     // NEXT [ID]
     match(NEXT);
@@ -631,20 +640,13 @@ static void compile_for(void) {
 */
 static void compile_while(void) {
     uint16_t pos1, pos2;
-    uint8_t tok;
 
     pos1 = pCi->pc; // start of loop
     compile_expression(e_NUM);
     pCi->p_code[pCi->pc++] = k_IF_N3;
     pos2 = pCi->pc; // end of loop
     pCi->pc += 2;
-    while(get_line()) {
-        tok = lookahead();
-        if(tok == LOOP) {
-            break;
-        }
-        compile_line();
-    }
+    compile_block();
     match(LOOP);
     pCi->p_code[pCi->pc++] = k_GOTO_N3;
     pCi->p_code[pCi->pc++] = pos1 & 0xFF;
@@ -665,14 +667,8 @@ static void compile_if_V2(uint16_t pos1) {
     uint8_t tok = 0;
     uint16_t pos2; // endif
 
-    while(get_line()) {
-        tok = lookahead();
-        if(tok == ELSE || tok == ENDIF || tok == ELSEIF) {
-            break;
-        }
-        compile_line();
-    }
-
+    compile_block();
+    tok = lookahead();
     if(tok == ELSEIF) {
         match(tok);
         pCi->p_code[pCi->pc++] = k_GOTO_N3;
@@ -682,19 +678,12 @@ static void compile_if_V2(uint16_t pos1) {
         compile_if();
         return;
     } else if(tok == ELSE) {
+        match(tok);
         pCi->p_code[pCi->pc++] = k_GOTO_N3;
         pos2 = pCi->pc; // end of else
         pCi->pc += 2;
         ACS16(pCi->p_code[pos1]) = pCi->pc;
-
-        while(get_line()) {
-            tok = lookahead();
-            if(tok == ENDIF) {
-                break;
-            }
-            compile_line();
-        }
-
+        compile_block();
         ACS16(pCi->p_code[pos2]) = pCi->pc;
     } else {
         ACS16(pCi->p_code[pos1]) = pCi->pc;

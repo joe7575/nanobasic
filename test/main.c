@@ -54,6 +54,7 @@ void nb_print(const char * format, ...) {
     va_start(args, format);
     vprintf(format, args);
     va_end(args);
+    fflush(stdout);
 }
 
 int main(int argc, char* argv[]) {
@@ -126,7 +127,7 @@ int main(int argc, char* argv[]) {
     nb_dump_code(instance);
 
     while(res >= NB_BUSY) {
-        cycles = 50;
+        cycles = 5000;
         while(cycles > 0 && res >= NB_BUSY && timeout <= time(NULL)) {
             res = nb_run(instance, &cycles);
             if(res == NB_BREAK) {
