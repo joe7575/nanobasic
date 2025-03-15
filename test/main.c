@@ -84,12 +84,14 @@ int main(int argc, char* argv[]) {
     assert(nb_define_external_function("input", 1, (uint8_t[]){NB_STR}, NB_NUM) == NB_XFUNC + 5);
     assert(nb_define_external_function("input$", 1, (uint8_t[]){NB_STR}, NB_STR) == NB_XFUNC + 6);
     assert(nb_define_external_function("cmd", 3, (uint8_t[]){NB_NUM, NB_ANY, NB_ANY}, NB_NUM) == NB_XFUNC + 7);
+    assert(nb_define_external_function("sgn", 1, (uint8_t[]){NB_NUM}, NB_NUM) == NB_XFUNC + 8);
 #endif
 
     void *instance = nb_create();
 
 #ifdef cfg_LINE_NUMBERS
-    FILE *fp = fopen("../examples/lineno.bas", "r");
+    //FILE *fp = fopen("../examples/lineno.bas", "r");
+    FILE *fp = fopen("../examples/calc_pi.bas", "r");
 #elif defined(cfg_DATA_ACCESS)
     FILE *fp = fopen("../examples/byte_access.bas", "r");
 #elif !defined(cfg_STRING_SUPPORT)
@@ -230,6 +232,10 @@ int main(int argc, char* argv[]) {
                     nb_print("Error: wrong number of parameters\n");
                     nb_push_num(instance, -3);
                 }
+            } else if(res == NB_XFUNC + 8) {
+                // sgn
+                int32_t val = nb_pop_num(instance);
+                nb_push_num(instance, (val > 0) - (val < 0));
             } else if(res >= NB_XFUNC) {
                 nb_print("Unknown external function\n");
             }

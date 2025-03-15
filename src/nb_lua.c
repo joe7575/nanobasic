@@ -43,6 +43,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define GETCURY                 (NB_XFUNC + 2)
 #define CLRSCR                  (NB_XFUNC + 3)
 #define CLRLINE                 (NB_XFUNC + 4)
+#define SGN                     (NB_XFUNC + 5)
 
 typedef struct {
     void *pv_vm;
@@ -272,6 +273,10 @@ static int run(lua_State *L) {
                         C->xpos = 0;
                     }
                     memset(C->screen_buffer + C->ypos * MAX_LINE_LEN, ' ', MAX_LINE_LEN);
+                    break;
+                case SGN:
+                    int32_t val = nb_pop_num(C->pv_vm);
+                    nb_push_num(C->pv_vm, (val > 0) - (val < 0));
                     break;
                 default:
                     p_Cpu = NULL;
@@ -686,6 +691,7 @@ LUALIB_API int luaopen_nanobasiclib(lua_State *L) {
     assert(nb_define_external_function("getcury", 0, (uint8_t[]){}, NB_NUM) == GETCURY);
     assert(nb_define_external_function("clrscr", 0, (uint8_t[]){}, NB_NONE) == CLRSCR);
     assert(nb_define_external_function("clrline", 1, (uint8_t[]){NB_NUM}, NB_NONE) == CLRLINE);
+    assert(nb_define_external_function("sgn", 1, (uint8_t[]){NB_NUM}, NB_NUM) == SGN);
     luaL_newmetatable(L, "nb_cpu");
     luaL_register(L, NULL, R);
     return 1;

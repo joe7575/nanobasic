@@ -329,7 +329,7 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             tmp2 = POP();
             if(tmp2 == 0) {
                 nb_print("Error: Division by zero\n");
-                PUSH(0);
+                TOP() = 0;
             } else {
                 TOP() = TOP() / tmp2;
             }
@@ -338,10 +338,9 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
         case k_MOD_N1:
             tmp2 = POP();
             if(tmp2 == 0) {
-                PUSH(0);
+                TOP() = 0;
             } else {
-                tmp2 = TOP() % tmp2;
-                TOP() = tmp2;
+                TOP() = TOP() % tmp2;
             }
             vm->pc += 1;
             break;
@@ -423,15 +422,23 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             // IF ID <= stack[-2] GOTO start
             tmp1 = ACS16(vm->code[vm->pc + 1]);
             var = vm->code[vm->pc + 3];
-            vm->variables[var] = vm->variables[var] + TOP();
-            if(vm->variables[var] <= PEEK(-2)) {
-              vm->pc = tmp1;
+            tmp2 = TOP(); // step value
+            vm->variables[var] = vm->variables[var] + tmp2;
+            if(tmp2 < 0) {
+                if(vm->variables[var] >= PEEK(-2)) {
+                    vm->pc = tmp1;
+                    break;
+                }
             } else {
-              vm->pc += 4;
-              (void)POP();  // remove step value
-              (void)POP();  // remove loop end value
-              vm->nested_loop_idx--;
+                if(vm->variables[var] <= PEEK(-2)) {
+                    vm->pc = tmp1;
+                    break;
+                }
             }
+            vm->pc += 4;
+            (void)POP();  // remove step value
+            (void)POP();  // remove loop end value
+            vm->nested_loop_idx--;
             break;
         case k_IF_N3:
             if(POP() == 0) {
