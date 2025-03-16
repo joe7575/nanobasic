@@ -676,6 +676,7 @@ static void compile_if_V2(uint16_t pos1) {
         pCi->pc += 2;
         ACS16(pCi->p_code[pos1]) = pCi->pc;
         compile_if();
+        ACS16(pCi->p_code[pos2]) = pCi->pc;
         return;
     } else if(tok == ELSE) {
         match(tok);
