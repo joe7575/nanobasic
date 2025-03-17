@@ -98,6 +98,7 @@ static void compile_line(void);
 static void compile_stmts(void);
 static void compile_stmt(void);
 static void compile_for(void);
+static void compile_if_V2(uint16_t pos1);
 static void compile_if(void);
 static void compile_goto(void);
 static void compile_gosub(void);
@@ -106,7 +107,6 @@ static void compile_var(uint8_t type);
 static void compile_dim(void);
 static void remark(void);
 static void compile_print(void);
-static void debug_print(uint16_t lineno);
 static void compile_string(void);
 static void compile_end(void);
 static type_t compile_xfunc(uint8_t type);
@@ -133,6 +133,8 @@ static void compile_troff(void);
 static void compile_free(void);
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
 static uint16_t sym_get(char *id);
+static void trace_print(uint16_t lineno);
+static uint16_t remove_trace(void);
 static void error(char *err, char *id);
 static uint8_t get_num_vars(void);
 static void add_default_params(uint8_t num);
@@ -394,6 +396,9 @@ static bool get_line(void) {
             }
         }
 #endif
+        if(pCi->trace_on) {
+            trace_print(pCi->linenum);
+        }
         return true;
     }
     return false;
@@ -524,9 +529,6 @@ static void compile_line(void) {
         }
     }
 #endif
-    if(pCi->trace_on) {
-        debug_print(pCi->linenum);
-    }
     compile_stmts();
 }
 
@@ -666,24 +668,37 @@ static void compile_while(void) {
 static void compile_if_V2(uint16_t pos1) {
     uint8_t tok = 0;
     uint16_t pos2; // endif
+    uint16_t lineno;
 
     compile_block();
     tok = lookahead();
     if(tok == ELSEIF) {
         match(tok);
+        if(pCi->trace_on) {
+            lineno = remove_trace();
+        }
         pCi->p_code[pCi->pc++] = k_GOTO_N3;
         pos2 = pCi->pc; // end of else
         pCi->pc += 2;
         ACS16(pCi->p_code[pos1]) = pCi->pc;
+        if(pCi->trace_on) {
+            trace_print(lineno);
+        }
         compile_if();
         ACS16(pCi->p_code[pos2]) = pCi->pc;
         return;
     } else if(tok == ELSE) {
         match(tok);
+        if(pCi->trace_on) {
+            lineno = remove_trace();
+        }
         pCi->p_code[pCi->pc++] = k_GOTO_N3;
         pos2 = pCi->pc; // end of else
         pCi->pc += 2;
         ACS16(pCi->p_code[pos1]) = pCi->pc;
+        if(pCi->trace_on) {
+            trace_print(lineno);
+        }
         compile_block();
         ACS16(pCi->p_code[pos2]) = pCi->pc;
     } else {
@@ -871,12 +886,6 @@ static void compile_print(void) {
     if(add_newline) {
         pCi->p_code[pCi->pc++] = k_PRINT_NEWL_N1;
     }
-}
-
-static void debug_print(uint16_t lineno) {
-    pCi->p_code[pCi->pc++] = k_PRINT_LINENO_N3;
-    pCi->p_code[pCi->pc++] = lineno & 0xFF;
-    pCi->p_code[pCi->pc++] = (lineno >> 8) & 0xFF;
 }
 
 static void compile_string(void) {
@@ -1211,6 +1220,18 @@ static uint16_t sym_get(char *id) {
     }
     error("unknown symbol", id);
     return 0;
+}
+
+static void trace_print(uint16_t lineno) {
+    pCi->p_code[pCi->pc++] = k_PRINT_LINENO_N3;
+    pCi->p_code[pCi->pc++] = lineno & 0xFF;
+    pCi->p_code[pCi->pc++] = (lineno >> 8) & 0xFF;
+}
+
+static uint16_t remove_trace(void) {
+    uint16_t addr = ACS16(pCi->p_code[pCi->pc - 2]);
+    pCi->pc -= 3;
+    return addr;
 }
 
 static void error(char *err, char *id) {
