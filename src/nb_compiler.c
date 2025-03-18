@@ -60,6 +60,7 @@ typedef struct {
     fwdecl_t a_forward_decl[cfg_MAX_FW_DECL];
     uint8_t  num_fw_decls;
     uint8_t *p_code;
+    uint16_t *p_trace;
     uint16_t pc;
     uint16_t linenum;
     uint16_t err_count;
@@ -72,7 +73,6 @@ typedef struct {
     char    *p_next;
     uint32_t value;
     uint8_t  next_tok;
-    bool     trace_on;
     bool     first_data_declaration;
     jmp_buf  jmp_buf;
 } comp_inst_t;
@@ -133,8 +133,8 @@ static void compile_troff(void);
 static void compile_free(void);
 static uint16_t sym_add(char *id, uint32_t val, uint8_t type);
 static uint16_t sym_get(char *id);
-static void trace_print(uint16_t lineno);
-static uint16_t remove_trace(void);
+static void trace_print(void);
+static void remove_trace(void);
 static void error(char *err, char *id);
 static uint8_t get_num_vars(void);
 static void add_default_params(uint8_t num);
@@ -266,12 +266,14 @@ uint16_t nb_compile(void *pv_vm, void *fp) {
     }
 
     pCi->p_code = vm->code;
+#ifdef cfg_TRACE_SUPPORT
+    pCi->p_trace = vm->trace;
+#endif
     CurrVarIdx = 0;
     pCi->pc = 0;
     pCi->file_ptr = fp;
     pCi->linenum = 0;
     pCi->err_count = 0;
-    pCi->trace_on = false;
     pCi->first_data_declaration = true;
     pCi->p_code[pCi->pc++] = 0; // The first byte is reserved (invalid label address)
 
@@ -396,9 +398,7 @@ static bool get_line(void) {
             }
         }
 #endif
-        if(pCi->trace_on) {
-            trace_print(pCi->linenum);
-        }
+        trace_print();
         return true;
     }
     return false;
@@ -668,37 +668,28 @@ static void compile_while(void) {
 static void compile_if_V2(uint16_t pos1) {
     uint8_t tok = 0;
     uint16_t pos2; // endif
-    uint16_t lineno;
-
+ 
     compile_block();
     tok = lookahead();
     if(tok == ELSEIF) {
         match(tok);
-        if(pCi->trace_on) {
-            lineno = remove_trace();
-        }
+        remove_trace();
         pCi->p_code[pCi->pc++] = k_GOTO_N3;
         pos2 = pCi->pc; // end of else
         pCi->pc += 2;
         ACS16(pCi->p_code[pos1]) = pCi->pc;
-        if(pCi->trace_on) {
-            trace_print(lineno);
-        }
+        trace_print();
         compile_if();
         ACS16(pCi->p_code[pos2]) = pCi->pc;
         return;
     } else if(tok == ELSE) {
         match(tok);
-        if(pCi->trace_on) {
-            lineno = remove_trace();
-        }
+        remove_trace();
         pCi->p_code[pCi->pc++] = k_GOTO_N3;
         pos2 = pCi->pc; // end of else
         pCi->pc += 2;
         ACS16(pCi->p_code[pos1]) = pCi->pc;
-        if(pCi->trace_on) {
-            trace_print(lineno);
-        }
+        trace_print();
         compile_block();
         ACS16(pCi->p_code[pos2]) = pCi->pc;
     } else {
@@ -1133,11 +1124,11 @@ static uint8_t list_of_numbers(void) {
 }
 
 static void compile_tron(void) {
-    pCi->trace_on = true;
+    pCi->p_code[pCi->pc++] = k_TRON_N1;
 }
 
 static void compile_troff(void) {
-    pCi->trace_on = false;
+    pCi->p_code[pCi->pc++] = k_TROFF_N1;
 }
 
 static void compile_free(void) {
@@ -1222,16 +1213,16 @@ static uint16_t sym_get(char *id) {
     return 0;
 }
 
-static void trace_print(uint16_t lineno) {
-    pCi->p_code[pCi->pc++] = k_PRINT_LINENO_N3;
-    pCi->p_code[pCi->pc++] = lineno & 0xFF;
-    pCi->p_code[pCi->pc++] = (lineno >> 8) & 0xFF;
+static void trace_print(void) {
+#ifdef cfg_TRACE_SUPPORT
+    pCi->p_trace[pCi->pc] = pCi->linenum;
+#endif
 }
 
-static uint16_t remove_trace(void) {
-    uint16_t addr = ACS16(pCi->p_code[pCi->pc - 2]);
-    pCi->pc -= 3;
-    return addr;
+static void remove_trace(void) {
+#ifdef cfg_TRACE_SUPPORT
+    pCi->p_trace[pCi->pc] = 0;
+#endif
 }
 
 static void error(char *err, char *id) {

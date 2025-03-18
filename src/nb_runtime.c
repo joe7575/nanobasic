@@ -214,7 +214,17 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
 
     while((*p_cycles)-- > 1)
     {
-        //printf("[nanobasic] %08lX %04X = %02X\n", (uint64_t)vm, vm->pc, vm->code[vm->pc]);
+        if(vm->trace_on) {
+#ifdef cfg_TRACE_SUPPORT        
+            uint16_t lineno = vm->trace[vm->pc];
+            if(lineno > 0) {
+                nb_print("[%u] ", lineno);
+            }
+#else
+            nb_print("[%04X] ", vm->pc);
+#endif
+        }
+
         switch (vm->code[vm->pc])
         {
         case k_END:
@@ -246,11 +256,6 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
                 nb_print(" ");
             }
             vm->pc += 1;
-            break;
-        case k_PRINT_LINENO_N3:
-            tmp1 = ACS16(vm->code[vm->pc + 1]);
-            nb_print("[%u] ", tmp1);
-            vm->pc += 3;
             break;
         case k_PUSH_STR_Nx:
             tmp1 = vm->code[vm->pc + 1]; // string length
@@ -310,6 +315,14 @@ uint16_t nb_run(void *pv_vm, uint16_t *p_cycles) {
             PPUSH(tmp1);
             vm->pc += 3; 
             return NB_BREAK;
+        case k_TRON_N1:
+            vm->trace_on = true;
+            vm->pc += 1;
+            break;
+        case k_TROFF_N1:
+            vm->trace_on = false;
+            vm->pc += 1;
+            break;
         case k_ADD_N1:
             tmp2 = POP();
             TOP() = TOP() + tmp2;

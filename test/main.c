@@ -62,9 +62,7 @@ int main(int argc, char* argv[]) {
     uint16_t cycles;
     uint16_t errors;
     uint32_t timeout = 0;
-#if defined(cfg_STRING_SUPPORT) && !defined(cfg_DATA_ACCESS)
     uint32_t startval = time(NULL);
-#endif
 #if defined(cfg_DATA_ACCESS) && !defined(cfg_STRING_SUPPORT)
     bool interrupted = false;
 #endif
@@ -92,7 +90,8 @@ int main(int argc, char* argv[]) {
 
 #ifdef cfg_LINE_NUMBERS
     //FILE *fp = fopen("../examples/lineno.bas", "r");
-    FILE *fp = fopen("../examples/calc_pi.bas", "r");
+    FILE *fp = fopen("../examples/trace_on.bas", "r");
+    //FILE *fp = fopen("../examples/calc_pi.bas", "r");
 #elif defined(cfg_DATA_ACCESS)
     FILE *fp = fopen("../examples/byte_access.bas", "r");
 #elif !defined(cfg_STRING_SUPPORT)

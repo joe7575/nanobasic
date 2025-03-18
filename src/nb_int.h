@@ -41,7 +41,6 @@ enum {
     k_PRINT_TAB_N1,       // 
     k_PRINT_SPACE_N1,     // 
     k_PRINT_BLANKS_N1,    // (function spc)
-    k_PRINT_LINENO_N3,    // (print line number for debugging purposes)
     k_PUSH_STR_Nx,        // nn S T R I N G 00 (push string address (16 bit))
     k_PUSH_NUM_N5,        // (push 4 byte const value)
     k_PUSH_NUM_N2,        // (push 1 byte const value)     
@@ -50,6 +49,8 @@ enum {
     k_POP_STR_N2,         // (pop variable)
     k_DIM_ARR_N2,         // (pop variable, pop size)
     k_BREAK_INSTR_N3,     // (break with line number)
+    k_TRON_N1,            // (trace on)
+    k_TROFF_N1,           // (trace off)
     k_ADD_N1,             // (add two values from stack)
     k_SUB_N1,             // (sub two values from stack)
     k_MUL_N1,             // (mul two values from stack)
@@ -153,6 +154,10 @@ typedef struct {
     int32_t  paramstack[cfg_PARAMSTACK_SIZE];
     uint32_t variables[cfg_NUM_VARS];
     uint8_t  code[cfg_MAX_CODE_SIZE];
+#ifdef cfg_TRACE_SUPPORT
+    uint16_t trace[cfg_MAX_CODE_SIZE];
+#endif
+    bool     trace_on;
     uint16_t mem_start_addr;    // Search start address for a free memory block
     uint16_t data_start_addr;   // Data section start address
     uint16_t data_read_offs;    // Data section read offset

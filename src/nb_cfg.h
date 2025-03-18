@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 //#define cfg_LINE_NUMBERS      // enable line numbers (or use labels)
 #define cfg_STRING_SUPPORT     // enable string support
 //#define cfg_DATA_ACCESS        // enable byte access to arrays
+#define cfg_TRACE_SUPPORT      // enable trace support
 
 #define cfg_MAX_FOR_LOOPS       (4)   // nested FOR loops (2 values per FOR loop on the stack)
 #define cfg_STACK_SIZE          (32)  // value for stack size (expression, call stack)
